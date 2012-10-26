@@ -14,7 +14,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from boto.gs.connection import Location
 from iriflares import IridiumFlares
 from jabberbot import botcmd
 from location import Location
