@@ -102,7 +102,7 @@ class SkybberBot(MUCJabberBot):
 
         try:
             satid = int(args)
-            return self._satteliteRequest(mess, args, str(satid), self._getObserver(mess.getFrom().getStripped()))
+            return self._satteliteRequest(mess, args, str(satid))
         except ValueError as e:
             return '<b>Usage:</b> satpass satellite ID'
             print e
@@ -111,7 +111,7 @@ class SkybberBot(MUCJabberBot):
     def iss(self, mess, args):
         ''' shows ISS passes
         '''
-        return self._satteliteRequest(mess, args, '25544', self._getObserver(mess.getFrom().getStripped()))
+        return self._satteliteRequest(mess, args, '25544')
 
     @botcmd
     def iri(self, mess, args):
@@ -122,8 +122,8 @@ class SkybberBot(MUCJabberBot):
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
         
-        lon, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
-        req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lon, None, {})
+        lng, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+        req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
         try:
             reply = opener.open(req).read()
             iflares = IridiumFlares()
@@ -135,15 +135,15 @@ class SkybberBot(MUCJabberBot):
             print e
     
 
-    def _satteliteRequest(self, mess, args, satid, observer):
+    def _satteliteRequest(self, mess, args, satid):
         opener = urllib2.build_opener()
         opener.addheaders = [
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
 
-        lon, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+        lng, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
 
-        req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lon, None, {})
+        req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
         try:
             reply = opener.open(req).read()
             sp = SatellitePasses()
@@ -397,7 +397,7 @@ class SkybberBot(MUCJabberBot):
                     loc = self._getAnyUserLocation(c, user)
                 if loc is not None:
                     observer = ephem.Observer()
-                    observer.long, observer.lat = loc.getLonAsSexigesimal(), str(loc.getLatAsSexigesimal()) 
+                    observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat()) 
                     observer.elevation = 0  
         if observer is None:
             observer = self._obsr_default
@@ -411,6 +411,6 @@ class SkybberBot(MUCJabberBot):
 
     def _getObserverStrCoord(self, jid):
         observer = self._getObserver(jid)
-        lon = observer.long / math.pi * 180.0
-        lat = observer.lat / math.pi * 180.0
-        return "{0:.3f}".format(lon), "{0:.3f}".format(lat)
+        lng = utils.todegrees(observer.long)
+        lat = utils.todegrees(observer.lat)
+        return "{0:.3f}".format(lng), "{0:.3f}".format(lat)

@@ -1,13 +1,11 @@
-import math
-
 class Location(object):
     ''' Location class
     '''
-    def __init__(self, location_id, user_id, name, lon, lat):
+    def __init__(self, location_id, user_id, name, lng, lat):
         self._location_id = location_id
         self._user_id = user_id
         self._name = name
-        self._lon = lon
+        self._lng = lng
         self._lat = lat
     
     def getLocationId(self):
@@ -30,17 +28,8 @@ class Location(object):
         '''
         return self._lat
 
-    def getLatAsString(self):
-        ''' Return latitude in string format degrees:minutes:seconds 
-        '''
-        return self._lat 
-    
-    def getLon(self):
+    def getLng(self):
         ''' Return longitude in degrees  
         '''
-        return self._lon
+        return self._lng
     
-    def getLonAsString(self):
-        ''' Return longitude in string format degrees:minutes:seconds 
-        '''
-        return self._lon 

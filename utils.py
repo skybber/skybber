@@ -1,6 +1,7 @@
 import re
 import ephem
 import datetime
+import math
 
 def xmlNodeValue(parent_node, node_name):
     node = parent_node.find(node_name)
@@ -53,4 +54,10 @@ def parseArgs(args):
             else:
                 result[a] = ''
     return result 
-    
+
+def todegrees(angle_rad):
+    return angle_rad / math.pi * 180.0
+
+def toradians(angle_deg):
+    return math.pi * angle_deg / 180.0
+
