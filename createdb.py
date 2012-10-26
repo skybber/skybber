@@ -6,7 +6,7 @@ conn = sqlite3.connect('skybber.db')
 c = conn.cursor()
 
 # Create table users
-c.execute('CREATE TABLE users  (user_id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT, descr TEXT)')
+c.execute('CREATE TABLE users  (user_id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT, descr TEXT, default_location_id INTEGER)')
 
 # Create table location
 c.execute('CREATE TABLE locations (location_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, lat real, long real)')

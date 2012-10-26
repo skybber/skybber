@@ -1,17 +1,32 @@
-#!/usr/bin/env python
-# coding: utf-8
+# SkybberBot: Astronomical jabber/xmpp bot 
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
-from jabberbot import botcmd
-from satellitepass import SatellitePasses
+from boto.gs.connection import Location
 from iriflares import IridiumFlares
+from jabberbot import botcmd
+from location import Location
 from mucjabberbot import MUCJabberBot
-import sqlite3
-import datetime
-import urllib2
-import math
-import ephem
-import utils
+from satellitepass import SatellitePasses
 from user import User
+import datetime
+import ephem
+import math
+import sqlite3
+import urllib2
+import utils
 
 class MasterDBConnection():
     SKYBBER_DB = 'skybber.db'
@@ -50,31 +65,9 @@ class SkybberBot(MUCJabberBot):
     def __init__(self, *args, **kwargs):
         MUCJabberBot.__init__(self, *args, **kwargs)
         self._obsr_default = ephem.Observer()
-        self._obsr_default.lat, self._obsr_default.long = '50.76111', '15.05728'
+        self._obsr_default.long, self._obsr_default.lat = '15.05728', '50.76111'
         self._obsr_default.elevation = 400  
 
-    def _getObserver(self, jid):
-        obsrv = None
-        with MasterDBConnection() as c:
-            user, _ = self._getRegisteredUser(c, jid, reg_check=False)
-            
-            if user is not None:
-                loc = c.execute('SELECT lat, long FROM locations WHERE user_id=?', (user.getUserId(),)).fetchone()
-                if loc is not None:
-                    obsrv = ephem.Observer()
-                    obsrv.lat, obsrv.long = str(loc[0]), str(loc[1]) 
-                    obsrv.elevation = 0  
-
-        if obsrv is None:
-            obsrv = self._obsr_default
-        return obsrv  
-    
-    def _getObserverCopy(self, jid):  
-        co = self._getObserver(jid)
-        obsrv =  ephem.Observer()
-        obsrv.lat, obsrv.long, obsrv.elevation = co.lat, co.long, co.elevation
-        return obsrv
-    
     @botcmd
     def satinfo(self, mess, args):
         ''' information about satellite identified by satellite id
@@ -129,9 +122,9 @@ class SkybberBot(MUCJabberBot):
         opener.addheaders = [
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
-
-        req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?' + \
-                              'lat=' + + '&lng=' + , None, {})
+        
+        lon, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+        req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lon, None, {})
         try:
             reply = opener.open(req).read()
             iflares = IridiumFlares()
@@ -149,8 +142,9 @@ class SkybberBot(MUCJabberBot):
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
 
-        req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?' + \
-                              'lat=' + + '&lng=' + , None, {})
+        lon, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+
+        req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lon, None, {})
         try:
             reply = opener.open(req).read()
             sp = SatellitePasses()
@@ -264,12 +258,12 @@ class SkybberBot(MUCJabberBot):
         return next_rising, next_setting 
 
     @botcmd 
-    def register(self, mess, args):
+    def reg(self, mess, args):
         ''' registers user into skybber  
         '''
         with MasterDBConnection() as c:
             str_jid = mess.getFrom().getStripped()
-            user, _ = self._getRegisteredUser(c, str_jid, reg_check=False)
+            user, _ = self._getUser(c, str_jid, reg_check=False)
             if user is not None:
                 reply = 'User ' + str_jid + ' is already registered !' 
             else:
@@ -279,11 +273,11 @@ class SkybberBot(MUCJabberBot):
         self.send_simple_reply(mess, reply)
 
     @botcmd 
-    def unregister(self, mess, args):
+    def unreg(self, mess, args):
         ''' unregister user from skybber  
         '''
         with MasterDBConnection() as c:
-            user, reply = self._getRegisteredUser(c, mess.getFrom().getStripped())
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
             if user is not None:
                 c.execute('DELETE FROM users WHERE jid=?', (user.getJID(), ))
                 c.execute('DELETE FROM locations WHERE user_id=?', (user.getUserId(), ))
@@ -293,27 +287,32 @@ class SkybberBot(MUCJabberBot):
         
 
     @botcmd 
-    def profile(self, mess, args):
-        ''' Shows user profile  
+    def prof(self, mess, args):
+        ''' shows user profile  
         '''
         with MasterDBConnection() as c:
-            user, reply = self._getRegisteredUser(c, mess.getFrom().getStripped())
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
             if user is not None:
-                reply = 'JID :' + user.getJID() + ' profile info: ' + user.getProfileDescription() 
+                reply = '\nJID :' + user.getJID() + '\nDescription: ' + user.getProfileDescription() + '\nDefault location: '
+                loc = self._getUserDefaultLocation(c, user)
+                if loc is None:
+                    reply += 'undefined.'
+                else:
+                    reply += loc.getName()
         self.send_simple_reply(mess, reply)
             
     @botcmd 
     def addloc(self, mess, args):
-        ''' add user location  
+        ''' adds user location  
         '''
         with MasterDBConnection() as c:
-            user, reply = self._getRegisteredUser(c, mess.getFrom().getStripped())
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
             if user is not None:
                 pargs = utils.parseArgs(args)
                 if 'name' in pargs and 'lat' in pargs and 'long' in pargs:
-                    c.execute('INSERT INTO locations(user_id, name, lat, long) VALUES (?,?,?,?)', \
-                              (user.getUserId(), pargs['name'], float(pargs['lat']), float(pargs['long'])))
-                    reply = 'Location added. (' + pargs['name'] + '[' + pargs['lat'] + ',' + pargs['long'] + '])'  
+                    c.execute('INSERT INTO locations(user_id, name, long, lat) VALUES (?,?,?,?)', \
+                              (user.getUserId(), pargs['name'], float(pargs['long']), float(pargs['lat'])))
+                    reply = 'Location added. (' + pargs['name'] + '[' + pargs['long'] + ',' + pargs['lat'] + '])'  
                 else:
                     reply = 'Invalid command option. Usage: addloc name=<location name> long=<longitude> lat=<latitude>' 
 
@@ -321,10 +320,10 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd 
     def rmloc(self, mess, args):
-        ''' removes user location.  
+        ''' removes location.  
         '''
         with MasterDBConnection() as c:
-            user, reply = self._getRegisteredUser(c, mess.getFrom().getStripped())
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
             if user is not None:
                 pargs = utils.parseArgs(args)
                 if 'name' in pargs:
@@ -336,26 +335,83 @@ class SkybberBot(MUCJabberBot):
         self.send_simple_reply(mess, reply)
 
     @botcmd 
-    def lsloc(self, mess, args):
-        ''' list user locations  
+    def setloc(self, mess, args):
+        ''' set location.  
         '''
         with MasterDBConnection() as c:
-            user, reply = self._getRegisteredUser(c, mess.getFrom().getStripped())
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
             if user is not None:
-                rs = c.execute("SELECT name, lat, long FROM locations WHERE user_id=?", (user.getUserId(), ))
-                reply = 'User locations : \n'
+                rs = c.execute("SELECT location_id FROM locations WHERE name=?", (args, )).fetchone()
+                if rs is not None:
+                    c.execute("UPDATE users SET default_location_id=? WHERE user_id=?", (rs[0], user.getUserId(),))
+                    reply = 'Default location is: ' + args 
+                else:
+                    reply = 'Unknown location: ' + args 
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def lsloc(self, mess, args):
+        ''' list of locations  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                rs = c.execute("SELECT name, long, lat FROM locations WHERE user_id=?", (user.getUserId(), ))
+                reply = '\nUser locations : \n'
                 for loc in rs:
                     reply += loc[0] + ' [' + str(loc[1]) + ', ' + str(loc[2]) + ']\n' 
         self.send_simple_reply(mess, reply)
 
-    def _getRegisteredUser(self, c, strjid, reg_check=True):
-        rs = c.execute("SELECT user_id, jid, descr FROM users WHERE jid=?", (strjid, )).fetchone()
+    def _getUser(self, c, strjid, reg_check=True):
+        rs = c.execute("SELECT user_id, jid, descr, default_location_id FROM users WHERE jid=?", (strjid, )).fetchone()
         user = None
         if rs is not None: 
-            user = User(rs[0], rs[1], rs[2])
+            user = User(rs[0], rs[1], rs[2], rs[3])
         if reg_check and user is None : 
             msg = 'User ' + strjid + ' is not registered.'
         else:
             msg = ''
         return (user, msg)
-            
+    
+    def _getUserDefaultLocation(self, c, user):
+        location = None
+        if user.getDefaultLocationId() is not None:
+            rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE location_id=?', (user.getDefaultLocationId(),)).fetchone()
+            if rs is not None:
+                location = Location(rs[0], rs[1], rs[2], rs[3], rs[4])
+        return location
+
+    def _getAnyUserLocation(self, c, user):
+        rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?', (user.getUserId(),)).fetchone()
+        location = None
+        if rs is not None:
+            location = Location(rs[0], rs[1], rs[2], rs[3], rs[5])
+        return location
+
+    def _getObserver(self, jid):
+        observer = None
+        with MasterDBConnection() as c:
+            user, _ = self._getUser(c, jid, reg_check=False)
+            if user is not None:
+                loc = self._getUserDefaultLocation(c, user)
+                if loc is None:
+                    loc = self._getAnyUserLocation(c, user)
+                if loc is not None:
+                    observer = ephem.Observer()
+                    observer.long, observer.lat = loc.getLonAsSexigesimal(), str(loc.getLatAsSexigesimal()) 
+                    observer.elevation = 0  
+        if observer is None:
+            observer = self._obsr_default
+        return observer
+    
+    def _getObserverCopy(self, jid):  
+        co = self._getObserver(jid)
+        obsrv =  ephem.Observer()
+        obsrv.long, obsrv.lat, obsrv.elevation = co.long, co.lat, co.elevation
+        return obsrv
+
+    def _getObserverStrCoord(self, jid):
+        observer = self._getObserver(jid)
+        lon = observer.long / math.pi * 180.0
+        lat = observer.lat / math.pi * 180.0
+        return "{0:.3f}".format(lon), "{0:.3f}".format(lat)
