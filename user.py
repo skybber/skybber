@@ -19,3 +19,11 @@ class User(object):
     
     def getDefaultLocationId(self):
         return self._default_location_id
+
+    @staticmethod
+    def getUserbyJID(c, strjid):
+        rs = c.execute("SELECT user_id, jid, descr, default_location_id FROM users WHERE jid=?", (strjid, )).fetchone()
+        user = None
+        if rs is not None: 
+            user = User(rs[0], rs[1], rs[2], rs[3])
+        return user
