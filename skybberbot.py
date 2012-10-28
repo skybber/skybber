@@ -23,6 +23,7 @@ from user import User
 import datetime
 import ephem
 import math
+import re
 import sqlite3
 import urllib2
 import utils
@@ -32,9 +33,11 @@ class MasterDBConnection():
 
     def __init__(self):
         self.dbcon = None
+    
     def __enter__(self):
         self.dbcon = sqlite3.connect(self.SKYBBER_DB)
         return self.dbcon.cursor()
+    
     def __exit__(self, type, value, tb):
         if tb is None:
             self.dbcon.commit()
@@ -66,10 +69,15 @@ class SkybberBot(MUCJabberBot):
         self._obsr_default = ephem.Observer()
         self._obsr_default.long, self._obsr_default.lat = '15.05728', '50.76111'
         self._obsr_default.elevation = 400  
+        self._arg_re = re.compile('[ \t]+')
 
+    def top_of_help_message(self):
+        return '''
+        This is astronomical jabber bot - SKYBBER!
+        '''
     @botcmd
     def satinfo(self, mess, args):
-        ''' information about satellite identified by satellite id
+        '''satinfo - information about satellite identified by satellite id
         '''
         if args is None or len(args) == 0:
             return '<b>Usage:</b> satinfo satelliteID'
@@ -95,7 +103,7 @@ class SkybberBot(MUCJabberBot):
         
     @botcmd
     def satpass(self, mess, args):
-        ''' shows satellite passes identified by satellite id
+        '''satpass - shows satellite passes identified by satellite id
         '''
         if args is None or len(args) == 0:
             return '<b>Usage:</b> satpass satellite ID'
@@ -109,13 +117,13 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd
     def iss(self, mess, args):
-        ''' shows ISS passes
+        '''iss - shows ISS passes
         '''
         return self._satteliteRequest(mess, args, '25544')
 
     @botcmd
     def iri(self, mess, args):
-        ''' shows Iridium flares
+        '''iri - shows Iridium flares
         '''
         opener = urllib2.build_opener()
         opener.addheaders = [
@@ -134,7 +142,223 @@ class SkybberBot(MUCJabberBot):
             self.send_simple_reply(mess, 'Service disconnected.')
             print e
     
+    @botcmd
+    def tw(self, mess, args):
+        '''tw - shows begin/end of current twilight  
+        '''
+        body = ephem.Sun()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '-18.0', datetime.datetime.utcnow())
+        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
+        self.send_simple_reply(mess, reply)
 
+    @botcmd 
+    def sun(self, mess, args):
+        '''sun - shows sun info  
+        '''
+        body = ephem.Sun()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def moon(self, mess, args):
+        '''moon - shows Moon ephemeris  
+        '''
+        body = ephem.Moon()
+        body.compute()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        reply = '^' + utils.formatLocalTime(next_rising) + ' -  v' + utils.formatLocalTime(next_setting)
+        reply += '  Phase ' +  "{0:.1}%".format(body.phase) 
+        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def mer(self, mess, args):
+        '''mer - shows Mercury ephemeris  
+        '''
+        body = ephem.Mercury()
+        body.compute()
+        elong = math.degrees(body.elong)
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        if elong > 0.0:
+            reply = 'v' + utils.formatLocalTime(next_setting)
+        else:
+            reply = '^' + utils.formatLocalTime(next_rising)
+        reply += '  ' + str(body.mag) + 'm'
+        reply += '  Elong ' + "{0:.2f}".format(elong)
+        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
+        self.send_simple_reply(mess, reply)
+    
+    @botcmd 
+    def ven(self, mess, args):
+        '''ven - shows Venus ephemeris  
+        '''
+        body = ephem.Venus()
+        body.compute()
+        elong = math.degrees(body.elong)
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        if elong > 0.0:
+            reply = 'v' + utils.formatLocalTime(next_setting)
+        else:
+            reply = '^' + utils.formatLocalTime(next_rising)
+        reply += '  ' + str(body.mag) + 'm'
+        reply += '   Elong ' + "{0:.2f}".format(elong)
+        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def mar(self, mess, args):
+        '''mar - shows Mars ephemeris  
+        '''
+        body = ephem.Mars()
+        body.compute()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        reply = utils.formatRiseSet(body, next_rising, next_setting)
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def jup(self, mess, args):
+        '''mar - shows Jupiter ephemeris  
+        '''
+        body = ephem.Jupiter()
+        body.compute()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        reply = utils.formatRiseSet(body, next_rising, next_setting)
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def sat(self, mess, args):
+        '''sat - shows Saturn ephemeris  
+        '''
+        body = ephem.Saturn()
+        body.compute()
+        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
+        reply = utils.formatRiseSet(body, next_rising, next_setting)
+        self.send_simple_reply(mess, reply)
+
+    @botcmd 
+    def reg(self, mess, args):
+        '''reg - registers user into skybber  
+        '''
+        with MasterDBConnection() as c:
+            str_jid = mess.getFrom().getStripped()
+            user, _ = self._getUser(c, str_jid, reg_check=False)
+            if user is not None:
+                reply = 'User ' + str_jid + ' is already registered !' 
+            else:
+                c.execute('INSERT INTO users(jid, descr) VALUES ( ?, ? )', (mess.getFrom().getStripped(), 'description'))
+                reply = 'User ' + str_jid + ' is registered.' 
+        
+        self.send_simple_reply(mess, reply)
+
+    @botcmd(allowed_roles={'registered'}) 
+    def unreg(self, mess, args):
+        '''ureg - unregister user from skybber  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                c.execute('DELETE FROM users WHERE jid=?', (user.getJID(), ))
+                c.execute('DELETE FROM locations WHERE user_id=?', (user.getUserId(), ))
+                reply = 'User ' + user.getJID() + ' was unregistered.' 
+        
+        self.send_simple_reply(mess, reply)
+        
+
+    @botcmd(allowed_roles={'registered'})
+    def prof(self, mess, args):
+        '''prof - shows user profile  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                reply = '\nJID :' + user.getJID() + '\nDescription: ' + user.getProfileDescription() + '\nDefault location: '
+                loc = self._getUserDefaultLocation(c, user)
+                if loc is None:
+                    reply += 'undefined.'
+                else:
+                    reply += loc.getName()
+        self.send_simple_reply(mess, reply)
+            
+    @botcmd(allowed_roles={'registered'}) 
+    def addloc(self, mess, args):
+        '''addloc <name> <latitude> <longitude> - adds user location. 
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                pargs = self._arg_re.split(args.strip())
+                if len(pargs) == 3: 
+                    if utils.is_number(pargs[1]) and utils.is_number(pargs[2]):
+                        loc = self._getUserLocationByName(c, user, pargs[0])
+                        if loc is None:
+                            c.execute('INSERT INTO locations(user_id, name, long, lat) VALUES (?,?,?,?)', \
+                                      (user.getUserId(), pargs[0], float(pargs[1]), float(pargs[2])))
+                            loc = self._getUserLocationByName(c, user, pargs[0])
+                            reply = 'Location "' + loc.getInfo() + '" added.'
+                        else:
+                            reply = 'Location "' + loc.getInfo() + '" already exists.' 
+                    else:
+                        reply = 'Invalid option type. Number expected.' 
+                else:
+                    reply = 'Invalid number of options.' 
+
+        self.send_simple_reply(mess, reply)
+
+    @botcmd(allowed_roles={'registered'})
+    def rmloc(self, mess, args):
+        '''rmloc <name> - removes location.  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                pargs = self._arg_re.split(args.strip())
+                if len(pargs) == 1:
+                    loc = self._getUserLocationByName(c, user, pargs[0])
+                    c.execute('DELETE FROM locations WHERE user_id=? AND name=?', (user.getUserId(), pargs[0]))
+                    reply = 'Location "' + loc.getInfo() + '" was removed.'  
+                else:
+                    reply = 'Invalid number of options.' 
+
+        self.send_simple_reply(mess, reply)
+
+    @botcmd(allowed_roles={'registered'}) 
+    def loc(self, mess, args):
+        '''rmloc <name> - set the location as the new default locaion .  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                pargs = self._arg_re.split(args.strip())
+                if len(pargs) == 1:
+                    loc = self._getUserLocationByName(c, user, pargs[0])
+                    if loc is not None:
+                        c.execute("UPDATE users SET default_location_id=? WHERE user_id=?", (loc.getLocationId(), user.getUserId(),))
+                        reply = 'Default location is: ' + loc.getInfo() 
+                    else:
+                        reply = 'Unknown location: ' + args
+                else: 
+                    reply = 'Invalid number of options.' 
+        self.send_simple_reply(mess, reply)
+
+    @botcmd(allowed_roles={'registered'})
+    def lsloc(self, mess, args):
+        '''lsloc - shows the list of locations  
+        '''
+        with MasterDBConnection() as c:
+            user, reply = self._getUser(c, mess.getFrom().getStripped())
+            if user is not None:
+                def_loc = self._getUserDefaultLocation(c, user)
+                rs = c.execute("SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?", (user.getUserId(), ))
+                reply = '\nUser locations : \n'
+                for rsloc in rs:
+                    loc = Location(rsloc[0], rsloc[1], rsloc[2], rsloc[3], rsloc[4])
+                    reply += loc.getInfo()
+                    if def_loc is not None and def_loc.getLocationId() == loc.getLocationId():
+                        reply += '  *'
+                    reply += '\n'  
+        self.send_simple_reply(mess, reply)
+        
     def _satteliteRequest(self, mess, args, satid):
         opener = urllib2.build_opener()
         opener.addheaders = [
@@ -153,100 +377,6 @@ class SkybberBot(MUCJabberBot):
         except urllib2.URLError as e:
             self.send_simple_reply(mess, 'Service disconnected.')
             print e
-    
-    @botcmd
-    def tw(self, mess, args):
-        ''' shows begin/end of current twilight  
-        '''
-        body = ephem.Sun()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '-18.0', datetime.datetime.utcnow())
-        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def sun(self, mess, args):
-        ''' shows sun info  
-        '''
-        body = ephem.Sun()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def moon(self, mess, args):
-        ''' shows Moon ephemeris  
-        '''
-        body = ephem.Moon()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = '^' + utils.formatLocalTime(next_rising) + ' -  v' + utils.formatLocalTime(next_setting)
-        reply += '  Phase ' +  "{0:.2f}".format(body.phase) 
-        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def mer(self, mess, args):
-        ''' shows Mercury ephemeris  
-        '''
-        body = ephem.Mercury()
-        body.compute()
-        elong = math.degrees(body.elong)
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        if elong > 0.0:
-            reply = 'v' + utils.formatLocalTime(next_setting)
-        else:
-            reply = '^' + utils.formatLocalTime(next_rising)
-        reply += '  ' + str(body.mag) + 'm'
-        reply += '  Elong ' + "{0:.2f}".format(elong)
-        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
-    
-    @botcmd 
-    def ven(self, mess, args):
-        ''' shows Venus ephemeris  
-        '''
-        body = ephem.Venus()
-        body.compute()
-        elong = math.degrees(body.elong)
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        if elong > 0.0:
-            reply = 'v' + utils.formatLocalTime(next_setting)
-        else:
-            reply = '^' + utils.formatLocalTime(next_rising)
-        reply += '  ' + str(body.mag) + 'm'
-        reply += '   Elong ' + "{0:.2f}".format(elong)
-        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def mar(self, mess, args):
-        ''' shows Mars ephemeris  
-        '''
-        body = ephem.Mars()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def jup(self, mess, args):
-        ''' shows Jupiter ephemeris  
-        '''
-        body = ephem.Jupiter()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def sat(self, mess, args):
-        ''' shows Saturn ephemeris  
-        '''
-        body = ephem.Saturn()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
 
     def _getNextRiseSetting(self, jid, body, horizon, dt):
         observer = self._getObserverCopy(jid)
@@ -256,110 +386,6 @@ class SkybberBot(MUCJabberBot):
         next_setting = observer.next_setting(body)
         return next_rising, next_setting 
 
-    @botcmd 
-    def reg(self, mess, args):
-        ''' registers user into skybber  
-        '''
-        with MasterDBConnection() as c:
-            str_jid = mess.getFrom().getStripped()
-            user, _ = self._getUser(c, str_jid, reg_check=False)
-            if user is not None:
-                reply = 'User ' + str_jid + ' is already registered !' 
-            else:
-                c.execute('INSERT INTO users(jid, descr) VALUES ( ?, ? )', (mess.getFrom().getStripped(), 'description'))
-                reply = 'User ' + str_jid + ' is registered.' 
-        
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def unreg(self, mess, args):
-        ''' unregister user from skybber  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                c.execute('DELETE FROM users WHERE jid=?', (user.getJID(), ))
-                c.execute('DELETE FROM locations WHERE user_id=?', (user.getUserId(), ))
-                reply = 'User ' + user.getJID() + ' was unregistered.' 
-        
-        self.send_simple_reply(mess, reply)
-        
-
-    @botcmd 
-    def prof(self, mess, args):
-        ''' shows user profile  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                reply = '\nJID :' + user.getJID() + '\nDescription: ' + user.getProfileDescription() + '\nDefault location: '
-                loc = self._getUserDefaultLocation(c, user)
-                if loc is None:
-                    reply += 'undefined.'
-                else:
-                    reply += loc.getName()
-        self.send_simple_reply(mess, reply)
-            
-    @botcmd 
-    def addloc(self, mess, args):
-        ''' adds user location  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                pargs = utils.parseArgs(args)
-                if 'name' in pargs and 'lat' in pargs and 'long' in pargs:
-                    c.execute('INSERT INTO locations(user_id, name, long, lat) VALUES (?,?,?,?)', \
-                              (user.getUserId(), pargs['name'], float(pargs['long']), float(pargs['lat'])))
-                    reply = 'Location added. (' + pargs['name'] + '[' + pargs['long'] + ',' + pargs['lat'] + '])'  
-                else:
-                    reply = 'Invalid command option. Usage: addloc name=<location name> long=<longitude> lat=<latitude>' 
-
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def rmloc(self, mess, args):
-        ''' removes location.  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                pargs = utils.parseArgs(args)
-                if 'name' in pargs:
-                    c.execute('DELETE FROM locations WHERE user_id=? AND name=?', (user.getUserId(), pargs['name']))
-                    reply = 'Location "' + pargs['name'] + '" was removed.'  
-                else:
-                    reply = 'Invalid command option. Usage: rmloc name=NAME' 
-
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def setloc(self, mess, args):
-        ''' set location.  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                rs = c.execute("SELECT location_id FROM locations WHERE name=?", (args, )).fetchone()
-                if rs is not None:
-                    c.execute("UPDATE users SET default_location_id=? WHERE user_id=?", (rs[0], user.getUserId(),))
-                    reply = 'Default location is: ' + args 
-                else:
-                    reply = 'Unknown location: ' + args 
-        self.send_simple_reply(mess, reply)
-
-    @botcmd 
-    def lsloc(self, mess, args):
-        ''' list of locations  
-        '''
-        with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                rs = c.execute("SELECT name, long, lat FROM locations WHERE user_id=?", (user.getUserId(), ))
-                reply = '\nUser locations : \n'
-                for loc in rs:
-                    reply += loc[0] + ' [' + str(loc[1]) + ', ' + str(loc[2]) + ']\n' 
-        self.send_simple_reply(mess, reply)
 
     def _getUser(self, c, strjid, reg_check=True):
         rs = c.execute("SELECT user_id, jid, descr, default_location_id FROM users WHERE jid=?", (strjid, )).fetchone()
@@ -384,33 +410,62 @@ class SkybberBot(MUCJabberBot):
         rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?', (user.getUserId(),)).fetchone()
         location = None
         if rs is not None:
-            location = Location(rs[0], rs[1], rs[2], rs[3], rs[5])
+            location = Location(rs[0], rs[1], rs[2], rs[3], rs[4])
+        return location
+    
+    def _getUserLocationByName(self, c, user, loc_name):
+        rs = c.execute("SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=? AND name=?", (user.getUserId(), loc_name)).fetchone()
+        if rs is not None:
+            location = rs is not None and Location(rs[0], rs[1], rs[2], rs[3], rs[4]) or None
+        else:
+            location = None
         return location
 
-    def _getObserver(self, jid):
+    def _getObserver(self, jid, loc_name = None):
         observer = None
         with MasterDBConnection() as c:
             user, _ = self._getUser(c, jid, reg_check=False)
             if user is not None:
-                loc = self._getUserDefaultLocation(c, user)
-                if loc is None:
-                    loc = self._getAnyUserLocation(c, user)
-                if loc is not None:
-                    observer = ephem.Observer()
-                    observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat()) 
-                    observer.elevation = 0  
+                if loc_name is not None:
+                    loc = self._getUserLocationByName(c, user, loc_name)
+                    # TODO : return message if loc is None
+                else:
+                    loc = self._getUserDefaultLocation(c, user)
+                    if loc is None:
+                        loc = self._getAnyUserLocation(c, user)
+                    if loc is not None:
+                        observer = ephem.Observer()
+                        observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat()) 
+                        observer.elevation = 0  
         if observer is None:
             observer = self._obsr_default
         return observer
     
-    def _getObserverCopy(self, jid):  
-        co = self._getObserver(jid)
+    def _getObserverCopy(self, jid, loc_name = None):  
+        co = self._getObserver(jid, loc_name)
         obsrv =  ephem.Observer()
         obsrv.long, obsrv.lat, obsrv.elevation = co.long, co.lat, co.elevation
         return obsrv
 
-    def _getObserverStrCoord(self, jid):
-        observer = self._getObserver(jid)
+    def _getObserverStrCoord(self, jid, loc_name = None):
+        observer = self._getObserver(jid, loc_name)
         lng = utils.todegrees(observer.long)
         lat = utils.todegrees(observer.lat)
         return "{0:.3f}".format(lng), "{0:.3f}".format(lat)
+
+    def check_role(self, allowed_roles, mess):
+        permit = True
+        if allowed_roles is not None:
+            user_roles = self._getUserRoles(mess.getFrom().getStripped())
+            if user_roles is None:
+                permit = False
+            else:
+                permit = not user_roles.isdisjoint(allowed_roles) 
+        return permit
+
+    def _getUserRoles(self, jid):
+        with MasterDBConnection() as c:
+            user, _ = self._getUser(c, jid, reg_check=False)
+            if user is not None:
+                return {'registered'}
+        return None

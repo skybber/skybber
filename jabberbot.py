@@ -57,10 +57,11 @@ __license__ = 'GNU General Public License version 3 or later'
 def botcmd(*args, **kwargs):
     """Decorator for bot command functions"""
 
-    def decorate(func, hidden=False, name=None, thread=False):
+    def decorate(func, hidden=False, name=None, thread=False, allowed_roles=None):
         setattr(func, '_jabberbot_command', True)
         setattr(func, '_jabberbot_command_hidden', hidden)
         setattr(func, '_jabberbot_command_name', name or func.__name__)
+        setattr(func, '_jabberbot_command_allowed_roles', allowed_roles)
         setattr(func, '_jabberbot_command_thread', thread)  # Experimental!
         return func
 
@@ -68,6 +69,7 @@ def botcmd(*args, **kwargs):
         return decorate(args[0], **kwargs)
     else:
         return lambda func: decorate(func, **kwargs)
+
 
 
 class JabberBot(object):
@@ -576,7 +578,7 @@ class JabberBot(object):
         if cmd in self.commands:
             def execute_and_send():
                 try:
-                    reply = self.commands[cmd](mess, args)
+                    reply = self.commands[cmd](mess, args)       
                 except Exception, e:
                     self.log.exception('An error happened while processing '\
                         'a message ("%s") from %s: %s"' %
@@ -636,6 +638,7 @@ class JabberBot(object):
         """
         return ""
 
+
     @botcmd
     def help(self, mess, args):
         """   Returns a help string listing available options.
@@ -648,11 +651,11 @@ class JabberBot(object):
                 description = 'Available commands:'
 
             usage = '\n'.join(sorted([
-                '%s: %s' % (name, (command.__doc__ or \
-                    '(undocumented)').strip().split('\n', 1)[0])
+                '%s' % ((command.__doc__ or '(undocumented)').strip().split('\n', 1)[0])
                 for (name, command) in self.commands.iteritems() \
                     if name != (self.__command_prefix + 'help') \
-                    and not command._jabberbot_command_hidden
+                    and not command._jabberbot_command_hidden \
+                    and self.check_role(command._jabberbot_command_allowed_roles, mess)
             ]))
             usage = '\n\n' + '\n\n'.join(filter(None,
                 [usage, self.MSG_HELP_TAIL % {'helpcommand':
@@ -736,5 +739,9 @@ class JabberBot(object):
 
         if disconnect_callback:
             disconnect_callback()
+
+    def check_role(self, allowed_roles, mess):
+        return True
+
 
 # vim: expandtab tabstop=4 shiftwidth=4 softtabstop=4

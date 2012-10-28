@@ -33,3 +33,5 @@ class Location(object):
         '''
         return self._lng
     
+    def getInfo(self):
+        return self.getName() + '['+ str(self.getLng()) + ','+ str(self.getLat()) + ']'

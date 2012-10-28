@@ -61,3 +61,11 @@ def todegrees(angle_rad):
 def toradians(angle_deg):
     return math.pi * angle_deg / 180.0
 
+def is_number(x):
+    try:
+        float(x)
+        return True
+    except ValueError:
+        return False
+    except TypeError:
+        return False
