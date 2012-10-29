@@ -36,6 +36,9 @@ class Location(object):
     def getInfo(self):
         return self.getName() + ' [ '+ str(self.getLng()) + ', '+ str(self.getLat()) + ' ]'
     
+    def delete(self, c):
+        c.execute('DELETE FROM locations WHERE location_id=?', (self.getLocationId(), ))
+
     @staticmethod
     def getLocationById(c, location_id):
         loc = None
@@ -44,19 +47,3 @@ class Location(object):
             loc = Location(rs[0], rs[1], rs[2], rs[3], rs[4])
         return loc
     
-    @staticmethod
-    def getUserLocationByName(c, user_id, loc_name):
-        rs = c.execute("SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=? AND name=?", (user_id, loc_name)).fetchone()
-        if rs is not None:
-            loc = rs is not None and Location(rs[0], rs[1], rs[2], rs[3], rs[4]) or None
-        else:
-            loc = None
-        return loc
-
-    @staticmethod
-    def getAnyUserLocation(c, user_id):
-        rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?', (user_id,)).fetchone()
-        location = None
-        if rs is not None:
-            location = Location(rs[0], rs[1], rs[2], rs[3], rs[4])
-        return location
