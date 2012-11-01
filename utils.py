@@ -33,13 +33,6 @@ def magMeter(sm, max_mag, min_mag, step):
     meter = "~" * int(round((-max_mag + mag) * koef)) + "#" * int(round((-mag + min_mag) * koef))
     return meter 
 
-def formatRiseSet(body, risi, seti):
-    result = '^' + formatLocalTime(risi)
-    result += ' v' + formatLocalTime(seti)
-    result += '  ' + str(body.mag) + 'm' 
-    result += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-    return result
-
 def parseArgs(args):
     result = {}
     args = args is None and '' or args.strip()

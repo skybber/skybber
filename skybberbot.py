@@ -1,3 +1,5 @@
+# coding: utf-8
+
 # SkybberBot: Astronomical jabber/xmpp bot 
 #
 # This program is free software; you can redistribute it and/or modify
@@ -26,6 +28,7 @@ import re
 import sqlite3
 import urllib2
 import utils
+from TypeDetector import TypeDetector
 
 class MasterDBConnection():
     SKYBBER_DB = 'skybber.db'
@@ -73,51 +76,52 @@ class SkybberBot(MUCJabberBot):
     def top_of_help_message(self):
         return '\n        This is astronomical jabber bot - SKYBBER!\n'
 
+
+    def _checkArgSatId(self, args):
+        satid = None
+        if args is None or len(args) == 0:
+            reply = 'Argument expected. Please specify satellite ID.'
+        else:
+            try:
+                satid = int(args)
+                reply = None
+            except ValueError:
+                reply = 'Argument expected. Please specify satellite ID.'
+        return (satid, reply)
+    
+    
     @botcmd
     def satinfo(self, mess, args):
         '''satinfo - information about satellite identified by satellite id
         '''
-        if args is None or len(args) == 0:
-            return '<b>Usage:</b> satinfo satelliteID'
-
-        try:
-            satid = int(args)
-
-            opener = urllib2.build_opener()
-            opener.addheaders = [
-                ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
-            ]
-            
-            req = urllib2.Request('http://api.uhaapi.com/satellites/' + str(satid) , None, {})
-
-            reply = opener.open(req).read()
-            self.send_simple_reply(mess, reply)
-            
-        except ValueError as e:
-            return '<b>Usage:</b> satinfo satelliteID'
-            print e
-        except urllib2.URLError as e:
-            print e
+        (satid, reply) = self._checkArgSatId(args)
+        if satid is not None:
+            try:
+                opener = urllib2.build_opener()
+                opener.addheaders = [
+                    ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
+                ]
+                
+                req = urllib2.Request('http://api.uhaapi.com/satellites/' + str(satid) , None, {})
+                reply = opener.open(req).read()
+            except urllib2.URLError:
+                reply = 'Service disconnected.'
+        return reply
         
     @botcmd
     def satpass(self, mess, args):
         '''satpass - shows satellite passes identified by satellite id
         '''
-        if args is None or len(args) == 0:
-            return '<b>Usage:</b> satpass satellite ID'
-
-        try:
-            satid = int(args)
-            return self._satteliteRequest(mess, args, str(satid))
-        except ValueError as e:
-            return '<b>Usage:</b> satpass satellite ID'
-            print e
+        (satid, reply) = self._checkArgSatId(args)
+        if satid is not None:
+            reply = self._satteliteRequest(mess, str(satid))
+        return reply
 
     @botcmd
     def iss(self, mess, args):
         '''iss - shows ISS passes
         '''
-        return self._satteliteRequest(mess, args, '25544')
+        return self._satteliteRequest(mess, '25544')
 
     @botcmd
     def iri(self, mess, args):
@@ -130,109 +134,71 @@ class SkybberBot(MUCJabberBot):
         
         lng, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
         req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
+        
+        iri_flares = IridiumFlares()
+        
         try:
-            reply = opener.open(req).read()
-            iflares = IridiumFlares()
-            iflares.parseFromXml(reply)
-            fmt_txt = iflares.format() 
-            self.send_simple_reply(mess, fmt_txt)
-        except urllib2.URLError as e:
-            self.send_simple_reply(mess, 'Service disconnected.')
-            print e
+            xml_resp = opener.open(req).read()
+            iri_flares.parseFromXml(xml_resp)
+            reply = iri_flares.format() 
+        except urllib2.URLError:
+            reply = 'Service disconnected.'
+        return reply
     
     @botcmd
     def tw(self, mess, args):
         '''tw - shows begin/end of current twilight  
         '''
         body = ephem.Sun()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '-18.0', datetime.datetime.utcnow())
+        next_rising, next_setting, fail_msg = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '-18.0', datetime.datetime.utcnow())
         reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
-        self.send_simple_reply(mess, reply)
+        return reply
 
     @botcmd 
     def sun(self, mess, args):
         '''sun - shows sun info  
         '''
-        body = ephem.Sun()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Sun(), withConstellMag=False)
 
     @botcmd 
     def moon(self, mess, args):
         '''moon - shows Moon ephemeris  
         '''
         body = ephem.Moon()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = '^' + utils.formatLocalTime(next_rising) + ' -  v' + utils.formatLocalTime(next_setting)
+        reply = self._formatRiseSet2(mess.getFrom().getStripped(), body, withConstellMag=False)
         reply += '  Phase ' +  ("%0.1f" % body.phase) 
         reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
+        return reply
 
     @botcmd 
     def mer(self, mess, args):
         '''mer - shows Mercury ephemeris  
         '''
-        body = ephem.Mercury()
-        body.compute()
-        elong = math.degrees(body.elong)
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        if elong > 0.0:
-            reply = 'v' + utils.formatLocalTime(next_setting)
-        else:
-            reply = '^' + utils.formatLocalTime(next_rising)
-        reply += '  ' + str(body.mag) + 'm'
-        reply += '  Elong ' + ("%0.2f" % elong)
-        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet1(mess.getFrom().getStripped(), ephem.Mercury())
     
     @botcmd 
     def ven(self, mess, args):
         '''ven - shows Venus ephemeris  
         '''
-        body = ephem.Venus()
-        body.compute()
-        elong = math.degrees(body.elong)
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        if elong > 0.0:
-            reply = 'v' + utils.formatLocalTime(next_setting)
-        else:
-            reply = '^' + utils.formatLocalTime(next_rising)
-        reply += '  ' + str(body.mag) + 'm'
-        reply += '   Elong ' + ("%0.2f" % elong)
-        reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet1(mess.getFrom().getStripped(), ephem.Venus())
 
     @botcmd 
     def mar(self, mess, args):
         '''mar - shows Mars ephemeris  
         '''
-        body = ephem.Mars()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Mars())
 
     @botcmd 
     def jup(self, mess, args):
         '''jup - shows Jupiter ephemeris  
         '''
-        body = ephem.Jupiter()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Jupiter())
 
     @botcmd 
     def sat(self, mess, args):
         '''sat - shows Saturn ephemeris  
         '''
-        body = ephem.Saturn()
-        body.compute()
-        next_rising, next_setting = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '0.0', datetime.datetime.utcnow())
-        reply = utils.formatRiseSet(body, next_rising, next_setting)
-        self.send_simple_reply(mess, reply)
+        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Saturn())
 
     @botcmd 
     def reg(self, mess, args):
@@ -247,7 +213,7 @@ class SkybberBot(MUCJabberBot):
                 user = User.createUser(c, mess.getFrom().getStripped())
                 reply = 'User ' + user.getJID() + ' is registered.' 
         
-        self.send_simple_reply(mess, reply)
+        return reply
 
     @botcmd(allowed_roles={'registered'}) 
     def unregister(self, mess, args):
@@ -259,7 +225,7 @@ class SkybberBot(MUCJabberBot):
                 user.delete(c)
                 reply = 'User ' + user.getJID() + ' was unregistered.' 
         
-        self.send_simple_reply(mess, reply)
+        return reply
         
 
     @botcmd(allowed_roles={'registered'})
@@ -275,7 +241,7 @@ class SkybberBot(MUCJabberBot):
                     reply += 'undefined.'
                 else:
                     reply += loc.getName()
-        self.send_simple_reply(mess, reply)
+        return reply
             
     @botcmd(allowed_roles={'registered'}) 
     def addloc(self, mess, args):
@@ -286,27 +252,10 @@ class SkybberBot(MUCJabberBot):
             if user is not None:
                 pargs = self._arg_re.split(args.strip())
                 if len(pargs) == 3: 
-                    if utils.is_number(pargs[1]) and utils.is_number(pargs[2]):
-                        loc = user.getLocationByName(c, pargs[0])
-                        if loc is None:
-                            user_locations = user.getUserLocationList(c)
-                            if len(user_locations) < self.MAX_USER_LOCATIONS:
-                                loc = user.createLocation(c, pargs[0], float(pargs[1]), float(pargs[2]))
-                                reply = 'Location "' + loc.getInfo() + '" added.'
-                                # set default location if it is a first one 
-                                if len(user_locations) == 0:
-                                    user.setDefaultLocation(c, loc)
-                                    reply += ' Location set as default location.'
-                            else:
-                                reply = 'Add location failed. Number of user locations exceeded limit ' + self.MAX_USER_LOCATIONS 
-                        else:
-                            reply = 'Location "' + loc.getInfo() + '" already exists.' 
-                    else:
-                        reply = 'Invalid option type. Number expected.' 
+                    reply = self._doAddLoc(c, user, pargs[0].strip(), pargs[1].strip(), pargs[2].strip())
                 else:
-                    reply = 'Invalid number of options.' 
-
-        self.send_simple_reply(mess, reply)
+                    reply = 'Invalid number of arguments.' 
+        return reply
 
     @botcmd(allowed_roles={'registered'})
     def rmloc(self, mess, args):
@@ -320,10 +269,12 @@ class SkybberBot(MUCJabberBot):
                     loc = user.getLocationByName(c, pargs[0])
                     loc.delete(c)
                     reply = 'Location "' + loc.getInfo() + '" was removed.'  
+                elif len(pargs) == 0:
+                    reply = 'Argument  - location name - expected.' 
                 else:
-                    reply = 'Invalid number of options.' 
+                    reply = 'Invalid number of arguments.' 
 
-        self.send_simple_reply(mess, reply)
+        return reply
 
     @botcmd(allowed_roles={'registered'}) 
     def loc(self, mess, args):
@@ -338,11 +289,11 @@ class SkybberBot(MUCJabberBot):
                     if loc is not None:
                         user.setDefaultLocation(c, loc)
                         reply = loc.getInfo() + '   is your default location now.'  
-                    else:
-                        reply = 'Unknown location: ' + args
-                else: 
-                    reply = 'Invalid number of options.' 
-        self.send_simple_reply(mess, reply)
+                elif len(pargs) == 0:
+                    reply = 'Argument  - location name - expected.' 
+                else:
+                    reply = 'Invalid number of arguments.'
+        return reply
         
 
     @botcmd(allowed_roles={'registered'})
@@ -359,9 +310,9 @@ class SkybberBot(MUCJabberBot):
                     if def_loc is not None and def_loc.getLocationId() == loc.getLocationId():
                         reply += '  *'
                     reply += '\n'  
-        self.send_simple_reply(mess, reply)
+        return reply
         
-    def _satteliteRequest(self, mess, args, satid):
+    def _satteliteRequest(self, mess, satid):
         ''' TODO:
         '''
         opener = urllib2.build_opener()
@@ -376,22 +327,9 @@ class SkybberBot(MUCJabberBot):
             reply = opener.open(req).read()
             sp = SatellitePasses()
             sp.parseFromXml(reply)
-            fmt_txt = sp.format() 
-            self.send_simple_reply(mess, fmt_txt)
-        except urllib2.URLError as e:
-            self.send_simple_reply(mess, 'Service disconnected.')
-            print e
-
-    def _getNextRiseSetting(self, jid, body, horizon, dt):
-        ''' TODO:
-        '''
-        observer = self._getObserverCopy(jid)
-        observer.horizon = horizon
-        observer.date = ephem.Date(dt) 
-        next_rising = observer.next_rising(body)
-        next_setting = observer.next_setting(body)
-        return next_rising, next_setting 
-
+            return sp.format() 
+        except urllib2.URLError:
+            return 'Service disconnected.'
 
     def _getUser(self, c, strjid, reg_check=True):
         ''' TODO:
@@ -465,3 +403,104 @@ class SkybberBot(MUCJabberBot):
             if user is not None:
                 return {'registered'}
         return None
+
+    def _doAddLoc(self, c, user, loc_name, sval1, sval2):
+        ''' Add location to list of locations. It reads geographic position in angle or geo format
+        '''
+
+        val1 = TypeDetector(sval1)
+        val2 = TypeDetector(sval2)
+        
+        lng = 0.0 
+        lat = 0.0 
+        
+        if val1.getType() == TypeDetector.FLOAT:
+            if val2.getType() == TypeDetector.FLOAT:
+                lng = val1.getTypeValue()
+                lat = val2.getTypeValue()
+            else:
+                return 'Invalid argument: "' + sval2 + '".  Number is expected.'
+        elif val1.getType() == TypeDetector.LOCATION_LONG:
+            if val2.getType() == TypeDetector.LOCATION_LAT:
+                lng = val1.getTypeValue()
+                lat = val2.getTypeValue()
+            else:
+                return 'Invalid argument: "' + sval2 + unicode('". Latitude expected. Example: 15°3\'53.856"E') 
+        elif val1.getType() == TypeDetector.LOCATION_LAT:
+            if val2.getType() == TypeDetector.LOCATION_LONG:
+                lat = val1.getTypeValue()
+                lng = val2.getTypeValue()
+            else:
+                return 'Invalid argument: "' + sval2 + unicode('". Longitude expected. Example: 50°46\'1.655"N')
+        else:
+            return 'Invalid format of argument value: "' + sval1 + '". Use help for .'
+            
+        loc = user.getLocationByName(c, loc_name)
+
+        if loc is None:
+            user_locations = user.getUserLocationList(c)
+            if len(user_locations) < self.MAX_USER_LOCATIONS:
+                loc = user.createLocation(c, loc_name, lng, lat)
+                reply = 'Location "' + loc.getInfo() + '" added.'
+                # set default location if it is a first one 
+                if len(user_locations) == 0:
+                    user.setDefaultLocation(c, loc)
+                    reply += ' Location set as default location.'
+            else:
+                reply = 'Add location failed. Number of user locations exceeded limit ' + self.MAX_USER_LOCATIONS 
+        else:
+            reply = 'Location "' + loc.getInfo() + '" already exists.'
+        
+        return reply 
+
+    def _formatRiseSet1(self, jid, body):
+        body.compute()
+        elong = math.degrees(body.elong)
+        next_rising, next_setting, fail_msg = self._getNextRiseSetting(jid, body, '0.0', datetime.datetime.utcnow())
+
+        if fail_msg is None:
+            if elong > 0.0:
+                result = 'v' + utils.formatLocalTime(next_setting)
+            else:
+                result = '^' + utils.formatLocalTime(next_rising)
+        else:
+            result = body.name + ' ' + fail_msg
+        
+        result += '  ' + str(body.mag) + 'm'
+        result += '  Elong ' + ("%0.2f" % elong)
+        result += '  [ ' +  ephem.constellation(body)[1] + ' ]'
+        return result 
+
+    def _formatRiseSet2(self, jid, body, withConstellMag=True):
+        body.compute()
+        next_rising, next_setting, fail_msg = self._getNextRiseSetting(jid, body, '0.0', datetime.datetime.utcnow())
+        if fail_msg is None:
+            result = '^' + utils.formatLocalTime(next_rising)
+            result += ' v' + utils.formatLocalTime(next_setting)
+        else:
+            result = body.name + ' ' + fail_msg
+        if withConstellMag: 
+            result += '  ' + str(body.mag) + 'm'
+            result += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
+        return result
+
+    def _getNextRiseSetting(self, jid, body, horizon, dt):
+        ''' TODO:
+        '''
+        observer = self._getObserverCopy(jid)
+        observer.horizon = horizon
+        observer.date = ephem.Date(dt)
+        try: 
+            next_rising = observer.next_rising(body)
+            next_setting = observer.next_setting(body)
+            fail_msg = None
+        except ephem.NeverUpError:
+            next_rising = None
+            next_setting = None
+            fail_msg = 'never rising.'
+        except ephem.AlwaysUpError:
+            next_rising = None
+            next_setting = None
+            fail_msg = 'never setting.'
+        
+        return (next_rising, next_setting, fail_msg) 
