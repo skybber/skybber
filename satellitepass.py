@@ -50,14 +50,20 @@ class SatellitePasses(object):
         
     def format(self):
         #result = '\nFrom: ' + utils.formatLocalDateTime(self._from) + ' To: ' + utils.formatLocalDateTime(self._to) + '\n'
-        result = '\n'
+        result = ''
         last_date = '' 
         for satpass in self._passInfos:
             date = utils.formatLocalDate(satpass.getDate())
             if date != last_date:
                 result += date + '\n'
                 last_date = date
-            result += satpass.format()  
+            result += satpass.format()
+
+        if len(result) == 0:
+            result = 'No visible satellite pass.'
+        else:
+            result = '\n' + result
+              
         return result
 
     def parseFromXml(self, xml_passes):

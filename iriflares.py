@@ -23,16 +23,21 @@ class IridiumFlares(object):
         self._to = ''
         self._flares = ()
         
-    def format(self):
+    def format(self, min_mag = -2.0):
         # result = '\nFrom: ' + utils.formatLocalDateTime(self._from) + ' To: ' + utils.formatLocalDateTime(self._to) + '\n'
-        result = '\n'
+        result = ''
         last_date = '' 
         for flare in self._flares:
-            date = utils.formatLocalDate(flare.tm)
-            if date != last_date:
-                result += date + '\n'
-                last_date = date
-            result += flare.format()  
+            if float(flare.mag) <= min_mag: 
+                date = utils.formatLocalDate(flare.tm)
+                if date != last_date:
+                    result += date + '\n'
+                    last_date = date
+                result += flare.format()
+        if len(result) == 0:
+            result = 'No visible flare.'
+        else:
+            result = '\n' + result
         return result
 
     def parseFromXml(self, xml_passes):

@@ -18,11 +18,6 @@ class Location(object):
         '''
         return self._user_id
 
-    def getName(self):
-        ''' Return name of location
-        '''
-        return self._name
-
     def getLat(self):
         ''' Return latitude in degrees  
         '''
@@ -32,7 +27,12 @@ class Location(object):
         ''' Return longitude in degrees  
         '''
         return self._lng
-    
+
+    def getName(self):
+        ''' Return name of location
+        '''
+        return self._name
+
     def getInfo(self):
         return self.getName() + ' [ '+ str(self.getLng()) + ', '+ str(self.getLat()) + ' ]'
     

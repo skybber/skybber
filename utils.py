@@ -62,3 +62,6 @@ def is_number(x):
         return False
     except TypeError:
         return False
+
+def today_noon():
+    datetime.combine()

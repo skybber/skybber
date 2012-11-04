@@ -22,13 +22,15 @@ from mucjabberbot import MUCJabberBot
 from satellitepass import SatellitePasses
 from user import User
 import datetime
+import time 
 import ephem
 import math
 import re
 import sqlite3
 import urllib2
 import utils
-from TypeDetector import TypeDetector
+from typedetector import TypeDetector
+from location import Location
 
 class MasterDBConnection():
     SKYBBER_DB = 'skybber.db'
@@ -66,6 +68,10 @@ class SkybberBot(MUCJabberBot):
     
     MAX_USER_LOCATIONS = 10
     
+    RISET_OK = 0
+    NEVER_RISING = 1
+    NEVER_SETTING = 2
+    
     def __init__(self, *args, **kwargs):
         MUCJabberBot.__init__(self, *args, **kwargs)
         self._obsr_default = ephem.Observer()
@@ -76,25 +82,11 @@ class SkybberBot(MUCJabberBot):
     def top_of_help_message(self):
         return '\n        This is astronomical jabber bot - SKYBBER!\n'
 
-
-    def _checkArgSatId(self, args):
-        satid = None
-        if args is None or len(args) == 0:
-            reply = 'Argument expected. Please specify satellite ID.'
-        else:
-            try:
-                satid = int(args)
-                reply = None
-            except ValueError:
-                reply = 'Argument expected. Please specify satellite ID.'
-        return (satid, reply)
-    
-    
     @botcmd
     def satinfo(self, mess, args):
         '''satinfo - information about satellite identified by satellite id
         '''
-        (satid, reply) = self._checkArgSatId(args)
+        (satid, _, reply) = self._checkArgSatId(args)
         if satid is not None:
             try:
                 opener = urllib2.build_opener()
@@ -112,16 +104,18 @@ class SkybberBot(MUCJabberBot):
     def satpass(self, mess, args):
         '''satpass - shows satellite passes identified by satellite id
         '''
-        (satid, reply) = self._checkArgSatId(args)
+        (satid, next_args, reply) = self._checkArgSatId(args)
         if satid is not None:
-            reply = self._satteliteRequest(mess, str(satid))
+            reply = self._satteliteRequest(mess, next_args, str(satid))
+        else:
+            reply = 'Satellite ID missing.'
         return reply
 
     @botcmd
     def iss(self, mess, args):
         '''iss - shows ISS passes
         '''
-        return self._satteliteRequest(mess, '25544')
+        return self._satteliteRequest(mess, '', '25544')
 
     @botcmd
     def iri(self, mess, args):
@@ -132,7 +126,13 @@ class SkybberBot(MUCJabberBot):
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
         
-        lng, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+        jid, loc, _, fail_msg = self._parseJidLocTime(mess, args)
+
+        if fail_msg is not None:
+            return fail_msg 
+
+        lng, lat = self._getObserverStrCoord(jid, loc)
+        
         req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
         
         iri_flares = IridiumFlares()
@@ -149,23 +149,51 @@ class SkybberBot(MUCJabberBot):
     def tw(self, mess, args):
         '''tw - shows begin/end of current twilight  
         '''
-        body = ephem.Sun()
-        next_rising, next_setting, fail_msg = self._getNextRiseSetting(mess.getFrom().getStripped(), body, '-18.0', datetime.datetime.utcnow())
-        reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising) 
+        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
+
+        if fail_msg is not None:
+            return fail_msg 
+        
+        next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
+        
+        if riset == SkybberBot.RISET_OK:
+            reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising)
+        elif riset == SkybberBot.NEVER_SETTING:
+            reply = 'No astronomical night.'
+        else:
+            '24hrs astronomical night.'
         return reply
 
+    @botcmd
+    def night(self, mess, args):
+        '''tw - shows the real night  
+        '''
+        jid = mess.getFrom().getStripped()
+        next_sun_rising, next_sun_setting, riset_sun = self._getNextRiseSetting(jid, ephem.Sun(), '-18.0', datetime.datetime.utcnow())
+        body_moon = ephem.Moon()
+        next_moon_rising, next_moon_setting, riset_moon = self._getNextRiseSetting(jid, ephem.Moon(), '0.0', datetime.datetime.utcnow())
+        if riset_sun == SkybberBot.RISET_OK:
+            if riset_moon == SkybberBot.RISET_OK:
+                pass
+            else:
+                pass
+        elif riset_sun == SkybberBot.NEVER_SETTING:
+            reply = 'No astronomical night.'
+        else:
+            reply = '...' # TODO
+        
     @botcmd 
     def sun(self, mess, args):
         '''sun - shows sun info  
         '''
-        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Sun(), withConstellMag=False)
+        return self._doBodyEphem(mess, args, ephem.Sun(), with_constell_mag=False, rising_first=False)
 
     @botcmd 
     def moon(self, mess, args):
         '''moon - shows Moon ephemeris  
         '''
         body = ephem.Moon()
-        reply = self._formatRiseSet2(mess.getFrom().getStripped(), body, withConstellMag=False)
+        reply = self._doBodyEphem(mess, args, body, with_constell_mag=False)
         reply += '  Phase ' +  ("%0.1f" % body.phase) 
         reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
         return reply
@@ -174,31 +202,31 @@ class SkybberBot(MUCJabberBot):
     def mer(self, mess, args):
         '''mer - shows Mercury ephemeris  
         '''
-        return self._formatRiseSet1(mess.getFrom().getStripped(), ephem.Mercury())
+        return self._doInnerBodyEphem(mess, args, ephem.Mercury())
     
     @botcmd 
     def ven(self, mess, args):
         '''ven - shows Venus ephemeris  
         '''
-        return self._formatRiseSet1(mess.getFrom().getStripped(), ephem.Venus())
+        return self._doInnerBodyEphem(mess, args, ephem.Venus())
 
     @botcmd 
     def mar(self, mess, args):
         '''mar - shows Mars ephemeris  
         '''
-        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Mars())
+        return self._doBodyEphem(mess, args, ephem.Mars())
 
     @botcmd 
     def jup(self, mess, args):
         '''jup - shows Jupiter ephemeris  
         '''
-        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Jupiter())
+        return self._doBodyEphem(mess, args, ephem.Jupiter())
 
     @botcmd 
     def sat(self, mess, args):
         '''sat - shows Saturn ephemeris  
         '''
-        return self._formatRiseSet2(mess.getFrom().getStripped(), ephem.Saturn())
+        return self._doBodyEphem(mess, args, ephem.Saturn())
 
     @botcmd 
     def reg(self, mess, args):
@@ -312,7 +340,19 @@ class SkybberBot(MUCJabberBot):
                     reply += '\n'  
         return reply
         
-    def _satteliteRequest(self, mess, satid):
+    def check_role(self, allowed_roles, mess):
+        '''checks if user from message heas enough rights for specified role
+        '''
+        permit = True
+        if allowed_roles is not None:
+            user_roles = self._getUserRoles(mess.getFrom().getStripped())
+            if user_roles is None:
+                permit = False
+            else:
+                permit = not user_roles.isdisjoint(allowed_roles) 
+        return permit
+
+    def _satteliteRequest(self, mess, args, satid):
         ''' TODO:
         '''
         opener = urllib2.build_opener()
@@ -320,7 +360,12 @@ class SkybberBot(MUCJabberBot):
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
 
-        lng, lat = self._getObserverStrCoord(mess.getFrom().getStripped())
+        jid, loc, _, fail_msg = self._parseJidLocTime(mess, args)
+
+        if fail_msg is not None:
+            return fail_msg 
+
+        lng, lat = self._getObserverStrCoord(jid, loc)
 
         req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
         try:
@@ -341,7 +386,7 @@ class SkybberBot(MUCJabberBot):
             msg = ''
         return (user, msg)
     
-    def _getObserver(self, jid, loc_name = None):
+    def _getObserverByName(self, jid, loc_name = None):
         '''Creates observer object initialized from location 
         
         1. It looks for location by location_name for given user(jid)
@@ -367,33 +412,45 @@ class SkybberBot(MUCJabberBot):
             observer = self._obsr_default
         return observer
     
-    def _getObserverCopy(self, jid, loc_name = None):
+    def _getObserver(self, jid, loc):
         '''Returns copy of observer object
-        '''  
-        co = self._getObserver(jid, loc_name)
+        '''
         obsrv =  ephem.Observer()
-        obsrv.long, obsrv.lat, obsrv.elevation = co.long, co.lat, co.elevation
+        
+        if loc is not None:
+            if loc.getName() is not None:
+                co = self._getObserverByName(jid, loc_name=loc.getName())
+                obsrv.long, obsrv.lat, obsrv.elevation = co.long, co.lat, co.elevation
+            else:
+                obsrv.long, obsrv.lat = loc.getLng(), loc.getLat()
+        else: 
+            co = self._getObserverByName(jid)
+            obsrv.long, obsrv.lat, obsrv.elevation = co.long, co.lat, co.elevation
+                 
         return obsrv
 
-    def _getObserverStrCoord(self, jid, loc_name = None):
+    def _getObserverStrCoord(self, jid, loc):
         '''Gets observer's coordinations in string form 
         '''
-        observer = self._getObserver(jid, loc_name)
+        observer = self._getObserver(jid, loc)
         lng = utils.todegrees(observer.long)
         lat = utils.todegrees(observer.lat)
         return ("%0.3f" % lng), ("%0.3f" % lat)
 
-    def check_role(self, allowed_roles, mess):
-        '''checks if user from message heas enough rights for specified role
-        '''
-        permit = True
-        if allowed_roles is not None:
-            user_roles = self._getUserRoles(mess.getFrom().getStripped())
-            if user_roles is None:
-                permit = False
-            else:
-                permit = not user_roles.isdisjoint(allowed_roles) 
-        return permit
+    def _checkArgSatId(self, args):
+        satid = None
+        next_args = None
+        pargs = self._arg_re.split(args.strip())
+        if pargs is None or len(pargs) == 0:
+            reply = 'Argument expected. Please specify satellite ID.'
+        else:
+            try:
+                satid = int(pargs[0])
+                reply = None
+                next_args = args[len(pargs[0]):]
+            except ValueError:
+                reply = 'Argument expected. Please specify satellite ID.'
+        return (satid, next_args, reply)
 
     def _getUserRoles(self, jid):
         '''Returns list of user's roles
@@ -425,13 +482,13 @@ class SkybberBot(MUCJabberBot):
                 lng = val1.getTypeValue()
                 lat = val2.getTypeValue()
             else:
-                return 'Invalid argument: "' + sval2 + unicode('". Latitude expected. Example: 15°3\'53.856"E') 
+                return 'Invalid argument: "' + sval2 + u'". Latitude expected. Example: 15°3\'53.856"E' 
         elif val1.getType() == TypeDetector.LOCATION_LAT:
             if val2.getType() == TypeDetector.LOCATION_LONG:
                 lat = val1.getTypeValue()
                 lng = val2.getTypeValue()
             else:
-                return 'Invalid argument: "' + sval2 + unicode('". Longitude expected. Example: 50°46\'1.655"N')
+                return 'Invalid argument: "' + sval2 + u'". Longitude expected. Example: 50°46\'1.655"N'
         else:
             return 'Invalid format of argument value: "' + sval1 + '". Use help for .'
             
@@ -453,54 +510,161 @@ class SkybberBot(MUCJabberBot):
         
         return reply 
 
-    def _formatRiseSet1(self, jid, body):
-        body.compute()
-        elong = math.degrees(body.elong)
-        next_rising, next_setting, fail_msg = self._getNextRiseSetting(jid, body, '0.0', datetime.datetime.utcnow())
+    def _fmtRiSetFailMsg(self, body, riset):
+        result = body.name + ' ' 
+        if riset == SkybberBot.NEVER_RISING:
+            result += 'never rising.'
+        else:
+            result += 'never setting.'
 
-        if fail_msg is None:
+    def _doInnerBodyEphem(self, mess, args, body, with_constell_mag=True):
+        body.compute()
+
+        elong = math.degrees(body.elong)
+        
+        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
+
+        if fail_msg is not None:
+            return fail_msg 
+        
+        next_rising, next_setting, riset = self._getNextRiseSetting(jid, body, dt=dt, loc=loc, horizon='0.0')
+
+        if riset == SkybberBot.RISET_OK:
             if elong > 0.0:
                 result = 'v' + utils.formatLocalTime(next_setting)
             else:
                 result = '^' + utils.formatLocalTime(next_rising)
         else:
-            result = body.name + ' ' + fail_msg
+            result = self._fmtRiSetFailMsg(body, riset)
         
-        result += '  ' + str(body.mag) + 'm'
         result += '  Elong ' + ("%0.2f" % elong)
-        result += '  [ ' +  ephem.constellation(body)[1] + ' ]'
+
+        if with_constell_mag:
+            result += '  ' + str(body.mag) + 'm'
+            result += '  [ ' +  ephem.constellation(body)[1] + ' ]'
         return result 
 
-    def _formatRiseSet2(self, jid, body, withConstellMag=True):
+    def _doBodyEphem(self, mess, args, body, with_constell_mag=True, rising_first=True):
+        ''' Returns next rise/setting for specified body.
+        '''
         body.compute()
-        next_rising, next_setting, fail_msg = self._getNextRiseSetting(jid, body, '0.0', datetime.datetime.utcnow())
-        if fail_msg is None:
-            result = '^' + utils.formatLocalTime(next_rising)
-            result += ' v' + utils.formatLocalTime(next_setting)
+        
+        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
+        
+        if fail_msg is not None:
+            return fail_msg 
+        
+        next_rising, next_setting, riset = self._getNextRiseSetting(jid, body, dt=dt, loc=loc, horizon='0.0')
+        
+        if riset == SkybberBot.RISET_OK:
+            if rising_first:
+                result = '^' + utils.formatLocalTime(next_rising) + ' v' + utils.formatLocalTime(next_setting)
+            else:
+                result = 'v' + utils.formatLocalTime(next_setting) + ' ^' + utils.formatLocalTime(next_rising)
         else:
-            result = body.name + ' ' + fail_msg
-        if withConstellMag: 
+            result = self._fmtRiSetFailMsg(body, riset) 
+        if with_constell_mag: 
             result += '  ' + str(body.mag) + 'm'
             result += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
         return result
 
-    def _getNextRiseSetting(self, jid, body, horizon, dt):
-        ''' TODO:
+    def _getNextRiseSetting(self, jid, body, loc=None, dt=None, horizon = '0.0'):
+        ''' Returns next rising/setting time for given body, horizont and date 
         '''
-        observer = self._getObserverCopy(jid)
+        observer = self._getObserver(jid, loc)
         observer.horizon = horizon
+        
+        if dt == None:
+            dt = self._getNoonDateTimeFrom6To6()
+        
         observer.date = ephem.Date(dt)
+
         try: 
             next_rising = observer.next_rising(body)
             next_setting = observer.next_setting(body)
-            fail_msg = None
+            riset = SkybberBot.RISET_OK
         except ephem.NeverUpError:
             next_rising = None
             next_setting = None
-            fail_msg = 'never rising.'
+            riset = SkybberBot.NEVER_RISING
         except ephem.AlwaysUpError:
             next_rising = None
             next_setting = None
-            fail_msg = 'never setting.'
+            riset = SkybberBot.NEVER_SETTING
         
-        return (next_rising, next_setting, fail_msg) 
+        return (next_rising, next_setting, riset) 
+
+    def _getNoonDateTimeFrom6To6(self):
+        ''' Returns noon of day beetween 06:00 of that day to next day 06:00 
+        '''
+        date = datetime.date.today()
+        if datetime.datetime.now().hour < 6:
+            date -= datetime.timedelta(1)
+
+        dt = datetime.datetime.combine(datetime.date.today(), datetime.time(12,0)) 
+        dt = dt + datetime.timedelta(0, time.timezone)
+        
+        return dt
+
+    def _parseJidLocTime(self, mess, args, parse_date = True):
+        jid = mess.getFrom().getStripped()
+        
+        args = args.strip()
+        
+        if args is None or len(args) == 0:
+            return (jid, None, None, None) 
+
+        loc = None
+        dt = None
+        fail_msg = None
+        lng = None
+        lat = None
+        loc_name = None
+
+        pargs = self._arg_re.split(args.strip())
+        
+        if pargs is not None:
+            for arg in pargs:
+                parsed_arg = TypeDetector(arg)
+                if parse_date and parsed_arg.getType() == TypeDetector.DATE:
+                    if dt is None:
+                        dt = parsed_arg.getValue()
+                    else:   
+                        fail_msg = 'Invalid double date argument: ' + arg
+                        break
+                elif parsed_arg.getType() == TypeDetector.LOCATION_LONG:
+                    if lng is None:
+                        lng = parsed_arg.getValue()
+                    else:   
+                        fail_msg = 'Invalid double longitude argument: ' + arg
+                        break
+                elif parsed_arg.getType() == TypeDetector.LOCATION_LAT:
+                    if lat is None:
+                        lat = parsed_arg.getValue()
+                    else:   
+                        fail_msg = 'Invalid double latitude argument: ' + arg
+                        break
+                elif parsed_arg.getType() == TypeDetector.STRING:
+                    if loc_name is None:
+                        loc_name = parsed_arg.getValue()
+                    else:   
+                        fail_msg = 'Invalid double location name argument: ' + arg
+                        break
+                else:
+                    fail_msg = 'Invalid argument: ' + arg
+                    break
+        
+        if fail_msg is None:
+            if (lng is not None or lat is not None) and loc_name is not None:
+                fail_msg = 'Invalid arguments. Please specify only one of longitude/latitude or location name.'
+            elif lng is not None and lat is None:
+                fail_msg = 'Invalid argument. Latitude missing.'
+            elif lng is None and lat is not None:
+                fail_msg = 'Invalid argument. Latitude missing.'
+            else:
+                if lng is not None:
+                    loc = Location(None, None, None, lng, lat)
+                elif loc_name is not None:
+                    loc = Location(None, None, loc_name, None, None)
+                  
+        return (jid, loc, dt, fail_msg)

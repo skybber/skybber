@@ -2,6 +2,7 @@
 
 import math
 import re
+import datetime
 
 class TypeDetector(object):
 
@@ -10,9 +11,11 @@ class TypeDetector(object):
     FLOAT = 2
     LOCATION_LONG = 3
     LOCATION_LAT = 4
-    STRING = 5
+    DATE = 5
+    STRING = 6
     
-    re_location = re.compile(unicode('(\d{1,3})°(\d{1,2})\'(?:(\d{1,2})(?:\.(\d+))?\")?([NSEW])'))
+    re_location = re.compile(u'^(\d{1,3})°(\d{1,2})\'(?:(\d{1,2})(?:\.(\d+))?\")?([NSEW])$')
+    re_date = re.compile('^(?:(\d{4})-(\d{1,2})-(\d{1,2}))|(?:(\d{4})/(\d{1,2})/(\d{1,2}))$')
     
     ''' TypeDetector class
     '''
@@ -42,14 +45,36 @@ class TypeDetector(object):
         
         if self._checkLocation(s):
             return
-        
+
+        if self._checkDate(s):
+            return
+
         self._typeValue = s
         self._type = TypeDetector.STRING 
         
-    def _checkLocation(self, v):
+    def _checkDate(self, s):
+        m = re.match(TypeDetector.re_date, s)
+
+        if m is None:
+            return False
+        
+        if m.group(1) is not None:
+            year, month, day = m.group(1), m.group(2), m.group(3)
+        else: 
+            year, month, day = m.group(4), m.group(5), m.group(6)
+        
+        try:
+            self._value = datetime.date(int(year), int(month), int(day))
+            self._type = TypeDetector.DATE
+            return True
+        except ValueError:
+            pass 
+        return False
+
+    def _checkLocation(self, s):
         ''' Checks if string has location format
         '''
-        m = re.match(TypeDetector.re_location, v)
+        m = re.match(TypeDetector.re_location, s)
         
         if m is None:
             return False
