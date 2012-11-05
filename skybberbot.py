@@ -404,10 +404,10 @@ class SkybberBot(MUCJabberBot):
                     loc = user.getDefaultLocation(c)
                     if loc is None:
                         loc = user.getUserLocationList(c, 1)
-                    if loc is not None:
-                        observer = ephem.Observer()
-                        observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat()) 
-                        observer.elevation = 0  
+                if loc is not None:
+                    observer = ephem.Observer()
+                    observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat()) 
+                    observer.elevation = 0  
         if observer is None:
             observer = self._obsr_default
         return observer

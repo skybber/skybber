@@ -34,7 +34,7 @@ class Location(object):
         return self._name
 
     def getInfo(self):
-        return self.getName() + ' [ '+ str(self.getLng()) + ', '+ str(self.getLat()) + ' ]'
+        return self.getName() + ' [ '+ "%0.5f" % self.getLng() + ', '+ "%0.5f" % self.getLat() + ' ]'
     
     def delete(self, c):
         c.execute('DELETE FROM locations WHERE location_id=?', (self.getLocationId(), ))
