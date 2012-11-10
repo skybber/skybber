@@ -1,8 +1,8 @@
 from location import Location
 
 class User(object):
-    ''' User class
-    '''
+    """ User class
+    """
     
     def __init__(self, user_id, jid, profile_description, default_location_id):
         self._user_id = user_id
@@ -26,7 +26,7 @@ class User(object):
         return Location.getLocationById(c, self.getDefaultLocationId())
     
     def getLocationByName(self, c, loc_name):
-        rs = c.execute("SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=? AND name=?", (self.getUserId(), loc_name)).fetchone()
+        rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=? AND name=?', (self.getUserId(), loc_name)).fetchone()
         if rs is not None:
             loc = rs is not None and Location(rs[0], rs[1], rs[2], rs[3], rs[4]) or None
         else:
@@ -34,10 +34,10 @@ class User(object):
         return loc
 
     def setDefaultLocation(self, c, location):
-        c.execute("UPDATE users SET default_location_id=? WHERE user_id=?", (location.getLocationId(), self.getUserId(),))
+        c.execute('UPDATE users SET default_location_id=? WHERE user_id=?', (location.getLocationId(), self.getUserId(),))
 
     def getUserLocationList(self, c, size = None):
-        rs = c.execute("SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?", (self.getUserId(), ))
+        rs = c.execute('SELECT location_id, user_id, name, long, lat FROM locations WHERE user_id=?', (self.getUserId(), ))
         result = ()
         if size is None or size > 0:
             for rsloc in rs:
@@ -67,7 +67,7 @@ class User(object):
 
     @staticmethod
     def getUserbyJID(c, strjid):
-        rs = c.execute("SELECT user_id, jid, descr, default_location_id FROM users WHERE jid=?", (strjid, )).fetchone()
+        rs = c.execute('SELECT user_id, jid, descr, default_location_id FROM users WHERE jid=?', (strjid, )).fetchone()
         user = None
         if rs is not None: 
             user = User(rs[0], rs[1], rs[2], rs[3])

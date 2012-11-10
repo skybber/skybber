@@ -70,8 +70,6 @@ def botcmd(*args, **kwargs):
     else:
         return lambda func: decorate(func, **kwargs)
 
-
-
 class JabberBot(object):
     # Show types for presence
     AVAILABLE, AWAY, CHAT = None, 'away', 'chat'
@@ -578,7 +576,7 @@ class JabberBot(object):
         if cmd in self.commands:
             def execute_and_send():
                 try:
-                    reply = self.commands[cmd](mess, args)       
+                    reply = self.execute_command(mess, cmd, args)
                 except Exception, e:
                     self.log.exception('An error happened while processing '\
                         'a message ("%s") from %s: %s"' %
@@ -608,6 +606,14 @@ class JabberBot(object):
                 reply = default_reply
             if reply:
                 self.send_simple_reply(mess, reply)
+
+    def execute_command(self, mess, cmd, args):
+        """ Executes command. 
+
+        Override this method in derived class if you
+        want to hadle command execution by your way.
+        """
+        return self.commands[cmd](mess, args)
 
     def unknown_command(self, mess, cmd, args):
         """Default handler for unknown commands

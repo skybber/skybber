@@ -32,7 +32,17 @@ import utils
 from typedetector import TypeDetector
 from location import Location
 
+class CmdError(Exception):
+    """ Help class for handling command arguments errors
+    """
+    def __init__(self, value):
+        self.value = value
+        def __str__(self):
+            return repr(self.value)
+
 class MasterDBConnection():
+    """ Help class keeping DB connection
+    """
     SKYBBER_DB = 'skybber.db'
 
     def __init__(self):
@@ -62,6 +72,9 @@ class SkybberBot(MUCJabberBot):
     MSG_HELP_TAIL = 'Type %(helpcommand)s <command name> to get more info about that specific command.'
     MSG_HELP_UNDEFINED_COMMAND = 'Undefined command.'
     MSG_ERROR_OCCURRED = 'Unexpected error.'
+    
+    MSG_NO_ASTRONOMICAL_NIGHT = 'No astronomical night'
+    MSG_FULL_ASTRONOMICAL_NIGHT = '24hrs astronomical night.'
 
     PING_FREQUENCY = 60  # Set to the number of seconds, e.g. 60.
     PING_TIMEOUT = 2  # Seconds to wait for a response.
@@ -80,12 +93,14 @@ class SkybberBot(MUCJabberBot):
         self._arg_re = re.compile('[ \t]+')
 
     def top_of_help_message(self):
+        """ Overridden from JabberBot
+        """
         return '\n        This is astronomical jabber bot - SKYBBER!\n'
 
-    @botcmd
+    @botcmd(thread=True)
     def satinfo(self, mess, args):
-        '''satinfo - information about satellite identified by satellite id
-        '''
+        """satinfo - information about satellite identified by satellite id
+        """
         (satid, _, reply) = self._checkArgSatId(args)
         if satid is not None:
             try:
@@ -100,10 +115,10 @@ class SkybberBot(MUCJabberBot):
                 reply = 'Service disconnected.'
         return reply
         
-    @botcmd
+    @botcmd(thread=True)
     def satpass(self, mess, args):
-        '''satpass - shows satellite passes identified by satellite id
-        '''
+        """satpass - shows satellite passes identified by satellite id
+        """
         (satid, next_args, reply) = self._checkArgSatId(args)
         if satid is not None:
             reply = self._satteliteRequest(mess, next_args, str(satid))
@@ -111,26 +126,22 @@ class SkybberBot(MUCJabberBot):
             reply = 'Satellite ID missing.'
         return reply
 
-    @botcmd
+    @botcmd(thread=True)
     def iss(self, mess, args):
-        '''iss - shows ISS passes
-        '''
+        """iss - shows ISS passes
+        """
         return self._satteliteRequest(mess, '', '25544')
 
-    @botcmd
+    @botcmd(thread=True)
     def iri(self, mess, args):
-        '''iri - shows Iridium flares
-        '''
+        """iri - shows Iridium flares
+        """
         opener = urllib2.build_opener()
         opener.addheaders = [
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
         
-        jid, loc, _, fail_msg = self._parseJidLocTime(mess, args)
-
-        if fail_msg is not None:
-            return fail_msg 
-
+        jid, loc, _ = self._parseJidLocTime(mess, args)
         lng, lat = self._getObserverStrCoord(jid, loc)
         
         req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
@@ -147,51 +158,109 @@ class SkybberBot(MUCJabberBot):
     
     @botcmd
     def tw(self, mess, args):
-        '''tw - shows begin/end of current twilight  
-        '''
-        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
-
-        if fail_msg is not None:
-            return fail_msg 
-        
+        """tw - shows begin/end of current twilight  
+        """
+        jid, loc, dt = self._parseJidLocTime(mess, args)
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
         
         if riset == SkybberBot.RISET_OK:
             reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising)
         elif riset == SkybberBot.NEVER_SETTING:
-            reply = 'No astronomical night.'
+            reply = SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT
         else:
-            '24hrs astronomical night.'
+            reply = SkybberBot.MSG_FULL_ASTRONOMICAL_NIGHT
         return reply
 
     @botcmd
     def night(self, mess, args):
-        '''tw - shows the real night  
-        '''
-        jid = mess.getFrom().getStripped()
-        next_sun_rising, next_sun_setting, riset_sun = self._getNextRiseSetting(jid, ephem.Sun(), '-18.0', datetime.datetime.utcnow())
-        body_moon = ephem.Moon()
-        next_moon_rising, next_moon_setting, riset_moon = self._getNextRiseSetting(jid, ephem.Moon(), '0.0', datetime.datetime.utcnow())
-        if riset_sun == SkybberBot.RISET_OK:
-            if riset_moon == SkybberBot.RISET_OK:
-                pass
-            else:
-                pass
-        elif riset_sun == SkybberBot.NEVER_SETTING:
-            reply = 'No astronomical night.'
+        """night - shows the real night, taking into consideration the Moon rising/setting   
+        """
+        jid, loc, dt = self._parseJidLocTime(mess, args)
+
+        next_sun_rising, next_sun_setting, riset_sun = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
+        next_moon_rising, next_moon_setting, riset_moon = self._getNextRiseSetting(jid, ephem.Moon(), dt=dt, loc=loc)
+        
+        if riset_sun == SkybberBot.NEVER_SETTING:
+            return SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT
+        
+        full_night = False
+        
+        if riset_sun == SkybberBot.NEVER_SETTING:
+            # TODO :
+            # tw_start = start day time  
+            # tw_end = end day time
+            full_night = True
+            pass 
         else:
-            reply = '...' # TODO
+            tw_start = next_sun_setting
+            tw_end = next_sun_rising 
+
+        tw_middle_end = None
+        tw_middle_start = None 
+
+        if riset_moon == SkybberBot.RISET_OK:
+            if next_moon_rising < next_moon_setting:
+                if next_moon_rising < next_sun_setting:  
+                    if next_moon_setting > next_sun_setting:  
+                        if next_moon_setting < next_sun_rising:
+                            tw_start = next_moon_setting # MR - SS - MS - SR
+                        else:
+                            return SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT # MR - SS - SR - MS
+                    else:
+                        pass  # MR - MS - SS - SR  
+                else:
+                    if next_moon_rising < next_sun_rising:
+                        if next_moon_setting < next_sun_rising:
+                            # SS - MR - MS - SR
+                            tw_middle_end = next_moon_rising  
+                            tw_middle_start = next_moon_rising 
+                        else:
+                            tw_end = next_moon_rising # SS - MR - SR - MS
+                    else:
+                        pass  # SS - SR - MR - MS
+            else:
+                if next_moon_setting < next_sun_setting:  
+                    if next_moon_rising > next_sun_setting:  
+                        if next_moon_rising < next_sun_rising:
+                            tw_end = next_moon_rising # MS - SS - MR - SR
+                        else:
+                            pass # MS - SS - SR - MR
+                    else:
+                        return SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT # MS - MR - SS - SR
+                else:
+                    if next_moon_setting < next_sun_rising:
+                        if next_moon_rising < next_sun_rising:
+                            # SS - MS - MR - SR
+                            tw_start = next_moon_setting  
+                            tw_end = next_moon_rising 
+                        else:
+                            tw_start = next_moon_setting # SS - MS - SR - MR
+                    else:
+                        return SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT # SS - SR - MS - MR
+        else:
+            if riset_moon == SkybberBot.NEVER_SETTING:
+                return SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT
+            elif full_night:
+                return SkybberBot.MSG_FULL_ASTRONOMICAL_NIGHT
+                
+        if tw_middle_start is None:
+            reply = 'v' + utils.formatLocalTime(tw_start) + '  -  ^' + utils.formatLocalTime(tw_end)
+        else:
+            reply = 'v' + utils.formatLocalTime(tw_start) + '  -  ^' + utils.formatLocalTime(tw_middle_end) + ' , ' + \
+                    'v' + utils.formatLocalTime(tw_middle_end) + '  -  ^' + utils.formatLocalTime(tw_end)
+
+        return reply
         
     @botcmd 
     def sun(self, mess, args):
-        '''sun - shows sun info  
-        '''
+        """sun - shows sun info  
+        """
         return self._doBodyEphem(mess, args, ephem.Sun(), with_constell_mag=False, rising_first=False)
 
     @botcmd 
     def moon(self, mess, args):
-        '''moon - shows Moon ephemeris  
-        '''
+        """moon - shows Moon ephemeris  
+        """
         body = ephem.Moon()
         reply = self._doBodyEphem(mess, args, body, with_constell_mag=False)
         reply += '  Phase ' +  ("%0.1f" % body.phase) 
@@ -200,149 +269,144 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd 
     def mer(self, mess, args):
-        '''mer - shows Mercury ephemeris  
-        '''
+        """mer - shows Mercury ephemeris  
+        """
         return self._doInnerBodyEphem(mess, args, ephem.Mercury())
     
     @botcmd 
     def ven(self, mess, args):
-        '''ven - shows Venus ephemeris  
-        '''
+        """ven - shows Venus ephemeris  
+        """
         return self._doInnerBodyEphem(mess, args, ephem.Venus())
 
     @botcmd 
     def mar(self, mess, args):
-        '''mar - shows Mars ephemeris  
-        '''
+        """mar - shows Mars ephemeris  
+        """
         return self._doBodyEphem(mess, args, ephem.Mars())
 
     @botcmd 
     def jup(self, mess, args):
-        '''jup - shows Jupiter ephemeris  
-        '''
+        """jup - shows Jupiter ephemeris  
+        """
         return self._doBodyEphem(mess, args, ephem.Jupiter())
 
     @botcmd 
     def sat(self, mess, args):
-        '''sat - shows Saturn ephemeris  
-        '''
+        """sat - shows Saturn ephemeris  
+        """
         return self._doBodyEphem(mess, args, ephem.Saturn())
 
     @botcmd 
     def reg(self, mess, args):
-        '''reg - registers user into skybber  
-        '''
+        """reg - registers user into skybber  
+        """
         with MasterDBConnection() as c:
             str_jid = mess.getFrom().getStripped()
-            user, _ = self._getUser(c, str_jid, reg_check=False)
+            user = self._getUser(c, str_jid, reg_check=False)
             if user is not None:
-                reply = 'User ' + user.getJID() + ' is already registered !' 
-            else:
-                user = User.createUser(c, mess.getFrom().getStripped())
-                reply = 'User ' + user.getJID() + ' is registered.' 
+                raise CmdError('User ' + user.getJID() + ' is already registered !') 
+            user = User.createUser(c, mess.getFrom().getStripped())
+            reply = 'User ' + user.getJID() + ' is registered.' 
         
         return reply
 
     @botcmd(allowed_roles={'registered'}) 
     def unregister(self, mess, args):
-        '''unregister - unregister user from skybber  
-        '''
+        """unregister - unregister user from skybber  
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                user.delete(c)
-                reply = 'User ' + user.getJID() + ' was unregistered.' 
+            user = self._getUser(c, mess.getFrom().getStripped())
+            user.delete(c)
+            reply = 'User ' + user.getJID() + ' was unregistered.'
         
         return reply
         
 
     @botcmd(allowed_roles={'registered'})
     def prof(self, mess, args):
-        '''prof - shows user profile  
-        '''
+        """prof - shows user profile  
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                reply = '\nJID :' + user.getJID() + '\nDescription: ' + user.getProfileDescription() + '\nDefault location: '
-                loc = user.getDefaultLocation(c)
-                if loc is None:
-                    reply += 'undefined.'
-                else:
-                    reply += loc.getName()
+            user = self._getUser(c, mess.getFrom().getStripped())
+            reply = '\nJID :' + user.getJID() + '\nDescription: ' + user.getProfileDescription() + '\nDefault location: '
+            loc = user.getDefaultLocation(c)
+            if loc is None:
+                reply += 'undefined.'
+            else:
+                reply += loc.getName()
         return reply
             
     @botcmd(allowed_roles={'registered'}) 
     def addloc(self, mess, args):
-        '''addloc <name> <longitude> <latitude> - adds user location. 
-        '''
+        """addloc <name> <longitude> <latitude> - adds user location. 
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                pargs = self._arg_re.split(args.strip())
-                if len(pargs) == 3: 
-                    reply = self._doAddLoc(c, user, pargs[0].strip(), pargs[1].strip(), pargs[2].strip())
-                else:
-                    reply = 'Invalid number of arguments.' 
+            user = self._getUser(c, mess.getFrom().getStripped())
+            pargs = self._arg_re.split(args.strip())
+            if len(pargs) == 3: 
+                reply = self._doAddLoc(c, user, pargs[0].strip(), pargs[1].strip(), pargs[2].strip())
+            else:
+                reply = 'Invalid number of arguments.' 
         return reply
 
     @botcmd(allowed_roles={'registered'})
     def rmloc(self, mess, args):
-        '''rmloc <name> - removes location.  
-        '''
+        """rmloc <name> - removes location.  
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                pargs = self._arg_re.split(args.strip())
-                if len(pargs) == 1:
-                    loc = user.getLocationByName(c, pargs[0])
-                    loc.delete(c)
-                    reply = 'Location "' + loc.getInfo() + '" was removed.'  
-                elif len(pargs) == 0:
-                    reply = 'Argument  - location name - expected.' 
-                else:
-                    reply = 'Invalid number of arguments.' 
+            user = self._getUser(c, mess.getFrom().getStripped())
+            pargs = self._arg_re.split(args.strip())
+            if len(pargs) == 1:
+                loc = user.getLocationByName(c, pargs[0])
+                loc.delete(c)
+                reply = 'Location "' + loc.getInfo() + '" was removed.'  
+            elif len(pargs) == 0:
+                reply = 'Argument  - location name - expected.' 
+            else:
+                reply = 'Invalid number of arguments.' 
 
         return reply
 
     @botcmd(allowed_roles={'registered'}) 
     def loc(self, mess, args):
-        '''loc <name> - set the location as the new default location .  
-        '''
+        """loc <name> - set the location as the new default location .  
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                pargs = self._arg_re.split(args.strip())
-                if len(pargs) == 1:
-                    loc = user.getLocationByName(c, pargs[0])
-                    if loc is not None:
-                        user.setDefaultLocation(c, loc)
-                        reply = loc.getInfo() + '   is your default location now.'  
-                elif len(pargs) == 0:
-                    reply = 'Argument  - location name - expected.' 
-                else:
-                    reply = 'Invalid number of arguments.'
+            user = self._getUser(c, mess.getFrom().getStripped())
+            pargs = self._arg_re.split(args.strip())
+            if len(pargs) == 1:
+                loc = user.getLocationByName(c, pargs[0])
+                if loc is not None:
+                    user.setDefaultLocation(c, loc)
+                    reply = loc.getInfo() + '   is your default location now.'  
+            elif len(pargs) == 0:
+                reply = 'Argument  - location name - expected.' 
+            else:
+                reply = 'Invalid number of arguments.'
         return reply
         
 
     @botcmd(allowed_roles={'registered'})
     def lsloc(self, mess, args):
-        '''lsloc - shows the list of locations  
-        '''
+        """lsloc - shows the list of locations  
+        """
         with MasterDBConnection() as c:
-            user, reply = self._getUser(c, mess.getFrom().getStripped())
-            if user is not None:
-                def_loc = user.getDefaultLocation(c)
-                reply = '\nUser locations : \n'
-                for loc in user.getUserLocationList(c):
-                    reply += loc.getInfo()
-                    if def_loc is not None and def_loc.getLocationId() == loc.getLocationId():
-                        reply += '  *'
-                    reply += '\n'  
+            user = self._getUser(c, mess.getFrom().getStripped())
+            def_loc = user.getDefaultLocation(c)
+            reply = '\nUser locations : \n'
+            for loc in user.getUserLocationList(c):
+                reply += loc.getInfo()
+                if def_loc is not None and def_loc.getLocationId() == loc.getLocationId():
+                    reply += '  *'
+                reply += '\n'  
         return reply
         
     def check_role(self, allowed_roles, mess):
-        '''checks if user from message heas enough rights for specified role
-        '''
+        """Overridden from JabberBot 
+           
+        checks if user from message heas enough rights for specified role
+        """
         permit = True
         if allowed_roles is not None:
             user_roles = self._getUserRoles(mess.getFrom().getStripped())
@@ -352,19 +416,24 @@ class SkybberBot(MUCJabberBot):
                 permit = not user_roles.isdisjoint(allowed_roles) 
         return permit
 
+    def execute_command(self, mess, cmd, args):
+        """ Overridden from JabberBot
+        """
+        try:
+            reply = MUCJabberBot.execute_command(self, mess, cmd, args)
+        except CmdError, e:
+            reply = e.value
+        return reply       
+
     def _satteliteRequest(self, mess, args, satid):
-        ''' TODO:
-        '''
+        """ TODO:
+        """
         opener = urllib2.build_opener()
         opener.addheaders = [
             ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
         ]
 
-        jid, loc, _, fail_msg = self._parseJidLocTime(mess, args)
-
-        if fail_msg is not None:
-            return fail_msg 
-
+        jid, loc, _ = self._parseJidLocTime(mess, args)
         lng, lat = self._getObserverStrCoord(jid, loc)
 
         req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
@@ -377,25 +446,23 @@ class SkybberBot(MUCJabberBot):
             return 'Service disconnected.'
 
     def _getUser(self, c, strjid, reg_check=True):
-        ''' TODO:
-        '''
+        """ Returns registered user 
+        """
         user = User.getUserbyJID(c, strjid)
         if reg_check and user is None : 
-            msg = 'User ' + strjid + ' is not registered.'
-        else:
-            msg = ''
-        return (user, msg)
+            raise CmdError('User ' + strjid + ' is not registered.')
+        return user
     
     def _getObserverByName(self, jid, loc_name = None):
-        '''Creates observer object initialized from location 
+        """Creates observer object initialized from location 
         
         1. It looks for location by location_name for given user(jid)
         2. if not exists  then it looks for user default location
         3. if not exists then returns first user location
-        '''
+        """
         observer = None
         with MasterDBConnection() as c:
-            user, _ = self._getUser(c, jid, reg_check=False)
+            user = self._getUser(c, jid, reg_check=False)
             if user is not None:
                 if loc_name is not None:
                     loc = user.getLocationByName(c, loc_name)
@@ -413,8 +480,8 @@ class SkybberBot(MUCJabberBot):
         return observer
     
     def _getObserver(self, jid, loc):
-        '''Returns copy of observer object
-        '''
+        """Returns copy of observer object
+        """
         obsrv =  ephem.Observer()
         
         if loc is not None:
@@ -430,8 +497,8 @@ class SkybberBot(MUCJabberBot):
         return obsrv
 
     def _getObserverStrCoord(self, jid, loc):
-        '''Gets observer's coordinations in string form 
-        '''
+        """Gets observer's coordinations in string form 
+        """
         observer = self._getObserver(jid, loc)
         lng = utils.todegrees(observer.long)
         lat = utils.todegrees(observer.lat)
@@ -453,17 +520,17 @@ class SkybberBot(MUCJabberBot):
         return (satid, next_args, reply)
 
     def _getUserRoles(self, jid):
-        '''Returns list of user's roles
-        '''
+        """Returns list of user's roles
+        """
         with MasterDBConnection() as c:
-            user, _ = self._getUser(c, jid, reg_check=False)
+            user = self._getUser(c, jid, reg_check=False)
             if user is not None:
                 return {'registered'}
         return None
 
     def _doAddLoc(self, c, user, loc_name, sval1, sval2):
-        ''' Add location to list of locations. It reads geographic position in angle or geo format
-        '''
+        """ Add location to list of locations. It reads geographic position in angle or geo format
+        """
 
         val1 = TypeDetector(sval1)
         val2 = TypeDetector(sval2)
@@ -522,11 +589,7 @@ class SkybberBot(MUCJabberBot):
 
         elong = math.degrees(body.elong)
         
-        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
-
-        if fail_msg is not None:
-            return fail_msg 
-        
+        jid, loc, dt = self._parseJidLocTime(mess, args)
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, body, dt=dt, loc=loc, horizon='0.0')
 
         if riset == SkybberBot.RISET_OK:
@@ -545,22 +608,18 @@ class SkybberBot(MUCJabberBot):
         return result 
 
     def _doBodyEphem(self, mess, args, body, with_constell_mag=True, rising_first=True):
-        ''' Returns next rise/setting for specified body.
-        '''
+        """ Returns next rise/setting for specified body.
+        """
         body.compute()
         
-        jid, loc, dt, fail_msg = self._parseJidLocTime(mess, args)
-        
-        if fail_msg is not None:
-            return fail_msg 
-        
+        jid, loc, dt = self._parseJidLocTime(mess, args)
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, body, dt=dt, loc=loc, horizon='0.0')
         
         if riset == SkybberBot.RISET_OK:
             if rising_first:
-                result = '^' + utils.formatLocalTime(next_rising) + ' v' + utils.formatLocalTime(next_setting)
+                result = '^' + utils.formatLocalTime(next_rising) + '  v' + utils.formatLocalTime(next_setting)
             else:
-                result = 'v' + utils.formatLocalTime(next_setting) + ' ^' + utils.formatLocalTime(next_rising)
+                result = 'v' + utils.formatLocalTime(next_setting) + '  ^' + utils.formatLocalTime(next_rising)
         else:
             result = self._fmtRiSetFailMsg(body, riset) 
         if with_constell_mag: 
@@ -569,8 +628,8 @@ class SkybberBot(MUCJabberBot):
         return result
 
     def _getNextRiseSetting(self, jid, body, loc=None, dt=None, horizon = '0.0'):
-        ''' Returns next rising/setting time for given body, horizont and date 
-        '''
+        """ Returns next rising/setting time for given body, horizont and date 
+        """
         observer = self._getObserver(jid, loc)
         observer.horizon = horizon
         
@@ -595,8 +654,8 @@ class SkybberBot(MUCJabberBot):
         return (next_rising, next_setting, riset) 
 
     def _getNoonDateTimeFrom6To6(self):
-        ''' Returns noon of day beetween 06:00 of that day to next day 06:00 
-        '''
+        """ Returns noon of day beetween 06:00 of that day to next day 06:00 
+        """
         date = datetime.date.today()
         if datetime.datetime.now().hour < 6:
             date -= datetime.timedelta(1)
@@ -612,11 +671,10 @@ class SkybberBot(MUCJabberBot):
         args = args.strip()
         
         if args is None or len(args) == 0:
-            return (jid, None, None, None) 
+            return (jid, None, None) 
 
         loc = None
         dt = None
-        fail_msg = None
         lng = None
         lat = None
         loc_name = None
@@ -627,44 +685,33 @@ class SkybberBot(MUCJabberBot):
             for arg in pargs:
                 parsed_arg = TypeDetector(arg)
                 if parse_date and parsed_arg.getType() == TypeDetector.DATE:
-                    if dt is None:
-                        dt = parsed_arg.getValue()
-                    else:   
-                        fail_msg = 'Invalid double date argument: ' + arg
-                        break
+                    if dt is not None:
+                        raise CmdError('Invalid double date argument: ' + arg)
+                    dt = parsed_arg.getValue()
                 elif parsed_arg.getType() == TypeDetector.LOCATION_LONG:
-                    if lng is None:
-                        lng = parsed_arg.getValue()
-                    else:   
-                        fail_msg = 'Invalid double longitude argument: ' + arg
-                        break
+                    if lng is not None:
+                        raise CmdError('Invalid double longitude argument: ' + arg)
+                    lng = parsed_arg.getValue()
                 elif parsed_arg.getType() == TypeDetector.LOCATION_LAT:
-                    if lat is None:
-                        lat = parsed_arg.getValue()
-                    else:   
-                        fail_msg = 'Invalid double latitude argument: ' + arg
-                        break
+                    if lat is not None:
+                        raise CmdError('Invalid double latitude argument: ' + arg)
+                    lat = parsed_arg.getValue()
                 elif parsed_arg.getType() == TypeDetector.STRING:
-                    if loc_name is None:
-                        loc_name = parsed_arg.getValue()
-                    else:   
-                        fail_msg = 'Invalid double location name argument: ' + arg
-                        break
+                    if loc_name is not None:
+                        raise CmdError('Invalid double location name argument: ' + arg)
+                    loc_name = parsed_arg.getValue()
                 else:
-                    fail_msg = 'Invalid argument: ' + arg
-                    break
+                    raise CmdError('Invalid argument: ' + arg)
         
-        if fail_msg is None:
             if (lng is not None or lat is not None) and loc_name is not None:
-                fail_msg = 'Invalid arguments. Please specify only one of longitude/latitude or location name.'
-            elif lng is not None and lat is None:
-                fail_msg = 'Invalid argument. Latitude missing.'
-            elif lng is None and lat is not None:
-                fail_msg = 'Invalid argument. Latitude missing.'
-            else:
-                if lng is not None:
-                    loc = Location(None, None, None, lng, lat)
-                elif loc_name is not None:
-                    loc = Location(None, None, loc_name, None, None)
+                raise CmdError('Invalid arguments. Please specify only one of longitude/latitude or location name.')
+            if lng is not None and lat is None:
+                raise CmdError('Invalid argument. Latitude missing.')
+            if lng is None and lat is not None:
+                raise CmdError('Invalid argument. Latitude missing.')
+            if lng is not None:
+                loc = Location(None, None, None, lng, lat)
+            elif loc_name is not None:
+                loc = Location(None, None, loc_name, None, None)
                   
-        return (jid, loc, dt, fail_msg)
+        return (jid, loc, dt)

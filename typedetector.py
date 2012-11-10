@@ -5,6 +5,8 @@ import re
 import datetime
 
 class TypeDetector(object):
+    """ TypeDetector class
+    """
 
     NONE = 0
     INTEGER = 1
@@ -17,8 +19,6 @@ class TypeDetector(object):
     re_location = re.compile(u'^(\d{1,3})°(\d{1,2})\'(?:(\d{1,2})(?:\.(\d+))?\")?([NSEW])$')
     re_date = re.compile('^(?:(\d{4})-(\d{1,2})-(\d{1,2}))|(?:(\d{4})/(\d{1,2})/(\d{1,2}))$')
     
-    ''' TypeDetector class
-    '''
     def __init__(self, s):
         self._type = TypeDetector.NONE
         self._typeValue = None
@@ -27,8 +27,8 @@ class TypeDetector(object):
 
 
     def _checkType(self, s):
-        ''' Detect type inside string and converts value to detected type 
-        '''
+        """ Detect type inside string and converts value to detected type 
+        """
         try:
             self._typeValue = int(s)
             self._type = TypeDetector.INTEGER
@@ -72,8 +72,8 @@ class TypeDetector(object):
         return False
 
     def _checkLocation(self, s):
-        ''' Checks if string has location format
-        '''
+        """ Checks if string has location format
+        """
         m = re.match(TypeDetector.re_location, s)
         
         if m is None:
