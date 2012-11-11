@@ -69,7 +69,8 @@ class SkybberBot(MUCJabberBot):
     MSG_AUTHORIZE_ME = 'Skybber: Please authorize my request.'
     MSG_NOT_AUTHORIZED = 'You did not authorize my subscription request. Access denied.'
     MSG_UNKNOWN_COMMAND = 'Unknown command: "%(command)s". Type "%(helpcommand)s" for available commands.'
-    MSG_HELP_TAIL = 'Type %(helpcommand)s <command name> to get more info about that specific command.'
+    # MSG_HELP_TAIL = 'Type %(helpcommand)s <command name> to get more info about that specific command.'
+    MSG_HELP_TAIL = ''
     MSG_HELP_UNDEFINED_COMMAND = 'Undefined command.'
     MSG_ERROR_OCCURRED = 'Unexpected error.'
     
@@ -95,7 +96,14 @@ class SkybberBot(MUCJabberBot):
     def top_of_help_message(self):
         """ Overridden from JabberBot
         """
-        return '\n        This is astronomical jabber bot - SKYBBER!\n'
+        return '\n     This is astronomical jabber bot - SKYBBER!\n' + \
+               '                      version 0.1 \n\n'
+    def bottom_of_help_message(self):
+        return u'\n\nDATE FORMATS: \n ‘YYYY-MM-DD’ or ‘YYYY/MM/DD  example: 2012/11/11’\n' + \
+            u'LOCATION FORMATS: \n' + \
+            u'   - angular, example : 14.86524 50.78461\n' + \
+            u'   - geographic coordinations, example : 50°46\'1.105"N 15°3\'52.885"E\n' + \
+            u'   - user location, example: prague' 
 
     @botcmd(thread=True)
     def satinfo(self, mess, args):
@@ -117,7 +125,7 @@ class SkybberBot(MUCJabberBot):
         
     @botcmd(thread=True)
     def satpass(self, mess, args):
-        """satpass - shows satellite passes identified by satellite id
+        """satpass - show satellite passes identified by satellite id
         """
         (satid, next_args, reply) = self._checkArgSatId(args)
         if satid is not None:
@@ -128,13 +136,13 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd(thread=True)
     def iss(self, mess, args):
-        """iss - shows ISS passes
+        """iss - show ISS passes
         """
         return self._satteliteRequest(mess, '', '25544')
 
     @botcmd(thread=True)
     def iri(self, mess, args):
-        """iri - shows Iridium flares
+        """iri - show Iridium flares
         """
         opener = urllib2.build_opener()
         opener.addheaders = [
@@ -158,7 +166,7 @@ class SkybberBot(MUCJabberBot):
     
     @botcmd
     def tw(self, mess, args):
-        """tw - shows begin/end of current twilight  
+        """tw [date] [location]  - show begin/end of current twilight   
         """
         jid, loc, dt = self._parseJidLocTime(mess, args)
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
@@ -173,7 +181,7 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd
     def night(self, mess, args):
-        """night - shows the real night, taking into consideration the Moon rising/setting   
+        """night [date] [location] - show the real night, taking into consideration the Moon rising/setting   
         """
         jid, loc, dt = self._parseJidLocTime(mess, args)
 
@@ -253,13 +261,13 @@ class SkybberBot(MUCJabberBot):
         
     @botcmd 
     def sun(self, mess, args):
-        """sun - shows sun info  
+        """sun [date] [location] - show sun info  
         """
         return self._doBodyEphem(mess, args, ephem.Sun(), with_constell_mag=False, rising_first=False)
 
     @botcmd 
     def moon(self, mess, args):
-        """moon - shows Moon ephemeris  
+        """moon [date] [location] - show Moon ephemeris  
         """
         body = ephem.Moon()
         reply = self._doBodyEphem(mess, args, body, with_constell_mag=False)
@@ -269,37 +277,37 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd 
     def mer(self, mess, args):
-        """mer - shows Mercury ephemeris  
+        """mer [date] [location] - show Mercury ephemeris  
         """
         return self._doInnerBodyEphem(mess, args, ephem.Mercury())
     
     @botcmd 
     def ven(self, mess, args):
-        """ven - shows Venus ephemeris  
+        """ven [date] [location] - show Venus ephemeris  
         """
         return self._doInnerBodyEphem(mess, args, ephem.Venus())
 
     @botcmd 
     def mar(self, mess, args):
-        """mar - shows Mars ephemeris  
+        """mar [date] [location] - show Mars ephemeris  
         """
         return self._doBodyEphem(mess, args, ephem.Mars())
 
     @botcmd 
     def jup(self, mess, args):
-        """jup - shows Jupiter ephemeris  
+        """jup [date] [location] - show Jupiter ephemeris  
         """
         return self._doBodyEphem(mess, args, ephem.Jupiter())
 
     @botcmd 
     def sat(self, mess, args):
-        """sat - shows Saturn ephemeris  
+        """sat [date] [location] - show Saturn ephemeris  
         """
         return self._doBodyEphem(mess, args, ephem.Saturn())
 
     @botcmd 
     def reg(self, mess, args):
-        """reg - registers user into skybber  
+        """reg - register user into skybber  
         """
         with MasterDBConnection() as c:
             str_jid = mess.getFrom().getStripped()
@@ -325,7 +333,7 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd(allowed_roles={'registered'})
     def prof(self, mess, args):
-        """prof - shows user profile  
+        """prof - show user profile  
         """
         with MasterDBConnection() as c:
             user = self._getUser(c, mess.getFrom().getStripped())
@@ -339,7 +347,7 @@ class SkybberBot(MUCJabberBot):
             
     @botcmd(allowed_roles={'registered'}) 
     def addloc(self, mess, args):
-        """addloc <name> <longitude> <latitude> - adds user location. 
+        """addloc <name> <longitude> <latitude> - add user location. 
         """
         with MasterDBConnection() as c:
             user = self._getUser(c, mess.getFrom().getStripped())
@@ -352,7 +360,7 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd(allowed_roles={'registered'})
     def rmloc(self, mess, args):
-        """rmloc <name> - removes location.  
+        """rmloc <name> - remove location.  
         """
         with MasterDBConnection() as c:
             user = self._getUser(c, mess.getFrom().getStripped())
@@ -389,7 +397,7 @@ class SkybberBot(MUCJabberBot):
 
     @botcmd(allowed_roles={'registered'})
     def lsloc(self, mess, args):
-        """lsloc - shows the list of locations  
+        """lsloc - show the list of locations  
         """
         with MasterDBConnection() as c:
             user = self._getUser(c, mess.getFrom().getStripped())
@@ -405,7 +413,7 @@ class SkybberBot(MUCJabberBot):
     def check_role(self, allowed_roles, mess):
         """Overridden from JabberBot 
            
-        checks if user from message heas enough rights for specified role
+        check if user from message heas enough rights for specified role
         """
         permit = True
         if allowed_roles is not None:
@@ -446,7 +454,7 @@ class SkybberBot(MUCJabberBot):
             return 'Service disconnected.'
 
     def _getUser(self, c, strjid, reg_check=True):
-        """ Returns registered user 
+        """ Return registered user 
         """
         user = User.getUserbyJID(c, strjid)
         if reg_check and user is None : 
@@ -454,7 +462,7 @@ class SkybberBot(MUCJabberBot):
         return user
     
     def _getObserverByName(self, jid, loc_name = None):
-        """Creates observer object initialized from location 
+        """Create observer object initialized from location 
         
         1. It looks for location by location_name for given user(jid)
         2. if not exists  then it looks for user default location
@@ -480,7 +488,7 @@ class SkybberBot(MUCJabberBot):
         return observer
     
     def _getObserver(self, jid, loc):
-        """Returns copy of observer object
+        """Return copy of observer object
         """
         obsrv =  ephem.Observer()
         
@@ -497,7 +505,7 @@ class SkybberBot(MUCJabberBot):
         return obsrv
 
     def _getObserverStrCoord(self, jid, loc):
-        """Gets observer's coordinations in string form 
+        """Get observer's coordinations in string form 
         """
         observer = self._getObserver(jid, loc)
         lng = utils.todegrees(observer.long)
@@ -520,7 +528,7 @@ class SkybberBot(MUCJabberBot):
         return (satid, next_args, reply)
 
     def _getUserRoles(self, jid):
-        """Returns list of user's roles
+        """Return list of user's roles
         """
         with MasterDBConnection() as c:
             user = self._getUser(c, jid, reg_check=False)
@@ -608,7 +616,7 @@ class SkybberBot(MUCJabberBot):
         return result 
 
     def _doBodyEphem(self, mess, args, body, with_constell_mag=True, rising_first=True):
-        """ Returns next rise/setting for specified body.
+        """ Return next rise/setting for specified body.
         """
         body.compute()
         
@@ -628,7 +636,7 @@ class SkybberBot(MUCJabberBot):
         return result
 
     def _getNextRiseSetting(self, jid, body, loc=None, dt=None, horizon = '0.0'):
-        """ Returns next rising/setting time for given body, horizont and date 
+        """ Return next rising/setting time for given body, horizont and date 
         """
         observer = self._getObserver(jid, loc)
         observer.horizon = horizon
@@ -654,7 +662,7 @@ class SkybberBot(MUCJabberBot):
         return (next_rising, next_setting, riset) 
 
     def _getNoonDateTimeFrom6To6(self):
-        """ Returns noon of day beetween 06:00 of that day to next day 06:00 
+        """ Return noon of day beetween 06:00 of that day to next day 06:00 
         """
         date = datetime.date.today()
         if datetime.datetime.now().hour < 6:
