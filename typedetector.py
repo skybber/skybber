@@ -64,7 +64,7 @@ class TypeDetector(object):
             year, month, day = m.group(4), m.group(5), m.group(6)
         
         try:
-            self._value = datetime.date(int(year), int(month), int(day))
+            self._typeValue = datetime.date(int(year), int(month), int(day))
             self._type = TypeDetector.DATE
             return True
         except ValueError:

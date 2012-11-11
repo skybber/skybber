@@ -695,15 +695,15 @@ class SkybberBot(MUCJabberBot):
                 if parse_date and parsed_arg.getType() == TypeDetector.DATE:
                     if dt is not None:
                         raise CmdError('Invalid double date argument: ' + arg)
-                    dt = parsed_arg.getValue()
+                    dt = parsed_arg.getTypeValue()
                 elif parsed_arg.getType() == TypeDetector.LOCATION_LONG:
                     if lng is not None:
                         raise CmdError('Invalid double longitude argument: ' + arg)
-                    lng = parsed_arg.getValue()
+                    lng = parsed_arg.getTypeValue()
                 elif parsed_arg.getType() == TypeDetector.LOCATION_LAT:
                     if lat is not None:
                         raise CmdError('Invalid double latitude argument: ' + arg)
-                    lat = parsed_arg.getValue()
+                    lat = parsed_arg.getTypeValue()
                 elif parsed_arg.getType() == TypeDetector.STRING:
                     if loc_name is not None:
                         raise CmdError('Invalid double location name argument: ' + arg)
