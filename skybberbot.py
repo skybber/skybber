@@ -169,6 +169,11 @@ class SkybberBot(MUCJabberBot):
         """tw [date] [location]  - show begin/end of current twilight   
         """
         jid, loc, dt = self._parseJidLocTime(mess, args)
+
+        # Set noon of if date is set
+        if dt != None:
+            dt = self._getNoonDateTimeFrom6To6ByDate(dt)
+
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
         
         if riset == SkybberBot.RISET_OK:
@@ -184,6 +189,10 @@ class SkybberBot(MUCJabberBot):
         """night [date] [location] - show the real night, taking into consideration the Moon rising/setting   
         """
         jid, loc, dt = self._parseJidLocTime(mess, args)
+
+        # Set noon of if date is set
+        if dt != None:
+            dt = self._getNoonDateTimeFrom6To6ByDate(dt)
 
         next_sun_rising, next_sun_setting, riset_sun = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
         next_moon_rising, next_moon_setting, riset_moon = self._getNextRiseSetting(jid, ephem.Moon(), dt=dt, loc=loc)
@@ -669,6 +678,14 @@ class SkybberBot(MUCJabberBot):
             date -= datetime.timedelta(1)
 
         dt = datetime.datetime.combine(datetime.date.today(), datetime.time(12,0)) 
+        dt = dt + datetime.timedelta(0, time.timezone)
+        
+        return dt
+
+    def _getNoonDateTimeFrom6To6ByDate(self, date):
+        """ Return noon of day beetween 06:00 of that day to next day 06:00 
+        """
+        dt = datetime.datetime.combine(date, datetime.time(12,0)) 
         dt = dt + datetime.timedelta(0, time.timezone)
         
         return dt
