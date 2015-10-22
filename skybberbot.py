@@ -86,6 +86,9 @@ class SkybberBot(MUCJabberBot):
     NEVER_RISING = 1
     NEVER_SETTING = 2
     
+    UNICODE_RISE = u' \u21E7'
+    UNICODE_SET = u'\u21E9'
+    
     def __init__(self, *args, **kwargs):
         MUCJabberBot.__init__(self, *args, **kwargs)
         self._obsr_default = ephem.Observer()
@@ -117,7 +120,7 @@ class SkybberBot(MUCJabberBot):
                     ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
                 ]
                 
-                req = urllib2.Request('http://api.uhaapi.com/satellites/' + str(satid) , None, {})
+                req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + str(satid) , None, {})
                 reply = opener.open(req).read()
             except urllib2.URLError:
                 reply = 'Service disconnected.'
@@ -152,7 +155,7 @@ class SkybberBot(MUCJabberBot):
         jid, loc, _ = self._parseJidLocTime(mess, args)
         lng, lat = self._getObserverStrCoord(jid, loc)
         
-        req = urllib2.Request('http://api.uhaapi.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
+        req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
         
         iri_flares = IridiumFlares()
         
@@ -177,7 +180,7 @@ class SkybberBot(MUCJabberBot):
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
         
         if riset == SkybberBot.RISET_OK:
-            reply = 'v' + utils.formatLocalTime(next_setting) + '  -  ^' + utils.formatLocalTime(next_rising)
+            reply = u'\u21E9' + utils.formatLocalTime(next_setting) + u'  -  \u21E7' + utils.formatLocalTime(next_rising)
         elif riset == SkybberBot.NEVER_SETTING:
             reply = SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT
         else:
@@ -261,10 +264,10 @@ class SkybberBot(MUCJabberBot):
                 return SkybberBot.MSG_FULL_ASTRONOMICAL_NIGHT
                 
         if tw_middle_start is None:
-            reply = 'v' + utils.formatLocalTime(tw_start) + '  -  ^' + utils.formatLocalTime(tw_end)
+            reply = u'\u21E9' + utils.formatLocalTime(tw_start) + u'  -  \u21E7' + utils.formatLocalTime(tw_end)
         else:
-            reply = 'v' + utils.formatLocalTime(tw_start) + '  -  ^' + utils.formatLocalTime(tw_middle_end) + ' , ' + \
-                    'v' + utils.formatLocalTime(tw_middle_end) + '  -  ^' + utils.formatLocalTime(tw_end)
+            reply = u'\u21E9' + utils.formatLocalTime(tw_start) + u'  -  \u21E7' + utils.formatLocalTime(tw_middle_end) + u' , ' + \
+                    u'\u21E9' + utils.formatLocalTime(tw_middle_end) + u'  -  \u21E7' + utils.formatLocalTime(tw_end)
 
         return reply
         
@@ -272,14 +275,14 @@ class SkybberBot(MUCJabberBot):
     def sun(self, mess, args):
         """sun [date] [location] - show sun info  
         """
-        return self._doBodyEphem(mess, args, ephem.Sun(), with_constell_mag=False, rising_first=False)
+        return self._doBodyEphem(mess, args, u'\u2609', ephem.Sun(), with_constell_mag=False, rising_first=False)
 
     @botcmd 
     def moon(self, mess, args):
         """moon [date] [location] - show Moon ephemeris  
         """
         body = ephem.Moon()
-        reply = self._doBodyEphem(mess, args, body, with_constell_mag=False)
+        reply = self._doBodyEphem(mess, args, u'\u263D', body, with_constell_mag=False)
         reply += '  Phase ' +  ("%0.1f" % body.phase) 
         reply += '  [ ' +  ephem.constellation(body)[1] + ' ]' 
         return reply
@@ -288,31 +291,31 @@ class SkybberBot(MUCJabberBot):
     def mer(self, mess, args):
         """mer [date] [location] - show Mercury ephemeris  
         """
-        return self._doInnerBodyEphem(mess, args, ephem.Mercury())
+        return self._doInnerBodyEphem(mess, args, u'\u263F', ephem.Mercury())
     
     @botcmd 
     def ven(self, mess, args):
         """ven [date] [location] - show Venus ephemeris  
         """
-        return self._doInnerBodyEphem(mess, args, ephem.Venus())
+        return self._doInnerBodyEphem(mess, args, u'\u2640', ephem.Venus())
 
     @botcmd 
     def mar(self, mess, args):
         """mar [date] [location] - show Mars ephemeris  
         """
-        return self._doBodyEphem(mess, args, ephem.Mars())
+        return self._doBodyEphem(mess, args, u'\u2642', ephem.Mars())
 
     @botcmd 
     def jup(self, mess, args):
         """jup [date] [location] - show Jupiter ephemeris  
         """
-        return self._doBodyEphem(mess, args, ephem.Jupiter())
+        return self._doBodyEphem(mess, args, u'\u2643', ephem.Jupiter())
 
     @botcmd 
     def sat(self, mess, args):
         """sat [date] [location] - show Saturn ephemeris  
         """
-        return self._doBodyEphem(mess, args, ephem.Saturn())
+        return self._doBodyEphem(mess, args, u'\u2644', ephem.Saturn())
 
     @botcmd 
     def reg(self, mess, args):
@@ -453,7 +456,7 @@ class SkybberBot(MUCJabberBot):
         jid, loc, _ = self._parseJidLocTime(mess, args)
         lng, lat = self._getObserverStrCoord(jid, loc)
 
-        req = urllib2.Request('http://api.uhaapi.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
+        req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
         try:
             reply = opener.open(req).read()
             sp = SatellitePasses()
@@ -566,13 +569,13 @@ class SkybberBot(MUCJabberBot):
                 lng = val1.getTypeValue()
                 lat = val2.getTypeValue()
             else:
-                return 'Invalid argument: "' + sval2 + u'". Latitude expected. Example: 15°3\'53.856"E' 
+                return 'Invalid argument: "' + sval2 + u'". Latitude expected. Example: 15??3\'53.856"E' 
         elif val1.getType() == TypeDetector.LOCATION_LAT:
             if val2.getType() == TypeDetector.LOCATION_LONG:
                 lat = val1.getTypeValue()
                 lng = val2.getTypeValue()
             else:
-                return 'Invalid argument: "' + sval2 + u'". Longitude expected. Example: 50°46\'1.655"N'
+                return 'Invalid argument: "' + sval2 + u'". Longitude expected. Example: 50??46\'1.655"N'
         else:
             return 'Invalid format of argument value: "' + sval1 + '". Use help for .'
             
@@ -601,7 +604,7 @@ class SkybberBot(MUCJabberBot):
         else:
             result += 'never setting.'
 
-    def _doInnerBodyEphem(self, mess, args, body, with_constell_mag=True):
+    def _doInnerBodyEphem(self, mess, args, unic_symb, body, with_constell_mag=True):
         body.compute()
 
         elong = math.degrees(body.elong)
@@ -611,9 +614,9 @@ class SkybberBot(MUCJabberBot):
 
         if riset == SkybberBot.RISET_OK:
             if elong > 0.0:
-                result = 'v' + utils.formatLocalTime(next_setting)
+                result = unic_symb + u' \u21E9' + utils.formatLocalTime(next_setting)
             else:
-                result = '^' + utils.formatLocalTime(next_rising)
+                result = unic_symb + u' \u21E7' + utils.formatLocalTime(next_rising)
         else:
             result = self._fmtRiSetFailMsg(body, riset)
         
@@ -624,7 +627,7 @@ class SkybberBot(MUCJabberBot):
             result += '  [ ' +  ephem.constellation(body)[1] + ' ]'
         return result 
 
-    def _doBodyEphem(self, mess, args, body, with_constell_mag=True, rising_first=True):
+    def _doBodyEphem(self, mess, args, unic_symb, body, with_constell_mag=True, rising_first=True):
         """ Return next rise/setting for specified body.
         """
         body.compute()
@@ -634,9 +637,9 @@ class SkybberBot(MUCJabberBot):
         
         if riset == SkybberBot.RISET_OK:
             if rising_first:
-                result = '^' + utils.formatLocalTime(next_rising) + '  v' + utils.formatLocalTime(next_setting)
+                result = unic_symb + u' \u21E7' + utils.formatLocalTime(next_rising) + u'  \u21E9' + utils.formatLocalTime(next_setting)
             else:
-                result = 'v' + utils.formatLocalTime(next_setting) + '  ^' + utils.formatLocalTime(next_rising)
+                result = unic_symb + u' \u21E9' + utils.formatLocalTime(next_setting) + u'  \u21E7' + utils.formatLocalTime(next_rising)
         else:
             result = self._fmtRiSetFailMsg(body, riset) 
         if with_constell_mag: 
@@ -740,3 +743,9 @@ class SkybberBot(MUCJabberBot):
                 loc = Location(None, None, loc_name, None, None)
                   
         return (jid, loc, dt)
+
+    def _getRiseSymb(self):
+        return UNICODE_RISE
+    
+    def _getSetSymb(self):
+        return UNICODE_SET
