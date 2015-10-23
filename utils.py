@@ -23,6 +23,9 @@ def formatLocalTime(ephmdt):
 def formatLocalDate(ephmdt):
     return ephem.localtime(ephmdt).strftime('%Y-%m-%d')
 
+def formatLocalDateDDMM(ephmdt):
+    return ephem.localtime(ephmdt).strftime('%d/%m')
+
 def formatSign(s):
     return float(s) < 0 and str(s) or (' ' + str(s)) 
 
@@ -30,7 +33,7 @@ def magMeter(sm, max_mag, min_mag, step):
     mag = float(sm)
     mag = (mag > min_mag and min_mag) or (mag < max_mag and max_mag) or mag
     koef = 1.0 / step
-    meter = "~" * int(round((-max_mag + mag) * koef)) + "#" * int(round((-mag + min_mag) * koef))
+    meter = u"\u2606" * int(round((-max_mag + mag) * koef)) + u"\u2605" * int(round((-mag + min_mag) * koef))
     return meter 
 
 def parseArgs(args):

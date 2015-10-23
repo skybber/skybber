@@ -9,12 +9,12 @@ class IridiumFlare(object):
         self.tm = None
         self.alt = None
         self.az = None
-        
+
     def format(self):
         result = utils.magMeter(self.mag, -8.0, 0.0, 1.0) + '   ' + utils.formatLocalTime(self.tm) + '  ' + \
             utils.formatSign(self.mag) + 'm  [ ' + utils.formatSign(self.alt) + ' / ' + utils.formatSign(self.az) + ' ]\n'
         return result
-   
+
 class IridiumFlares(object):
 
     def __init__(self):
@@ -22,18 +22,15 @@ class IridiumFlares(object):
         self._from = ''
         self._to = ''
         self._flares = ()
-        
+
     def format(self, min_mag = -2.0):
         # result = '\nFrom: ' + utils.formatLocalDateTime(self._from) + ' To: ' + utils.formatLocalDateTime(self._to) + '\n'
         result = ''
-        last_date = '' 
+        last_date = ''
         for flare in self._flares:
-            if float(flare.mag) <= min_mag: 
-                date = utils.formatLocalDate(flare.tm)
-                if date != last_date:
-                    result += date + '\n'
-                    last_date = date
-                result += flare.format()
+            if float(flare.mag) <= min_mag:
+                date = utils.formatLocalDateDDMM(flare.tm)
+                result += date + ' ' + flare.format()
         if len(result) == 0:
             result = 'No visible flare.'
         else:
@@ -41,14 +38,14 @@ class IridiumFlares(object):
         return result
 
     def parseFromXml(self, xml_passes):
-        
+
         rootn = etree.fromstring(xml_passes)
-        
+
         if rootn is None:
             return 'Empty response.'
-        
+
         self._observer = ephem.Observer()
-        
+
         for xml_node in rootn:
             if xml_node.tag == 'location':
                 self._observer.lat, self._observer.long = utils.xmlNodeValue(xml_node, 'lat'), utils.xmlNodeValue(xml_node, 'lng')
@@ -60,17 +57,17 @@ class IridiumFlares(object):
                 self._to = utils.parseIsoDateTime(xml_node.text)
             elif xml_node.tag == 'flare':
                 self._flares += (self._parseOneFlare(xml_node),)
-                
+
     def _parseOneFlare(self, passn):
         flare = IridiumFlare()
         for xml_node in passn:
             if xml_node.tag == 'magnitude':
                 flare.mag = xml_node.text
             elif xml_node.tag == 'time':
-                flare.tm = utils.parseIsoDateTime(xml_node.text) 
+                flare.tm = utils.parseIsoDateTime(xml_node.text)
             elif xml_node.tag == 'alt':
                 flare.alt = xml_node.text
             elif xml_node.tag == 'az':
                 flare.az = xml_node.text
         return flare
-        
+
