@@ -5,8 +5,8 @@ Astronomical jabber bot
 Commands:
 
 - addloc <name> <longitude> <latitude> - add user location.
-- iri - show Iridium flares
-- iss - show ISS passes
+- iri [location] - show Iridium flares
+- iss [location] - show ISS passes
 - jup [date] [location] - show Jupiter ephemeris
 - loc <name> - set the location as the new default location .
 - lsloc - show the list of locations
