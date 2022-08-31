@@ -1,8 +1,8 @@
 import re 
-import jabberbot
+from .jabberbot import JabberBot
 
 
-class MUCJabberBot(jabberbot.JabberBot):
+class MUCJabberBot(JabberBot):
     ''' Add features in JabberBot to allow it to handle specific
     caractheristics of multiple users chatroom (MUC). '''
 

@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as etree
 import ephem
-import utils
+from .utils import *
 
 
 class TimeAltAz(object):
@@ -10,7 +10,7 @@ class TimeAltAz(object):
         self.az = None
 
     def format(self):
-        result = utils.formatLocalTime(self.tm) + '  [ ' + self.alt + ' / ' + self.az + ' ]'
+        result = formatLocalTime(self.tm) + '  [ ' + self.alt + ' / ' + self.az + ' ]'
         return result
 
 class SatellitePassInfo(object):
@@ -34,7 +34,7 @@ class SatellitePassInfo(object):
         return None
 
     def format(self):
-        result = utils.magMeter(self.mag, -3.0, 1.0, 0.5) + '  '  + utils.formatSign(self.mag) + 'm  '
+        result = magMeter(self.mag, -3.0, 1.0, 0.5) + '  '  + formatSign(self.mag) + 'm  '
         if self.start is not None:
             result += SatellitePassInfo.UNICODE_RISE + self.start.format() + '  '
         if self.max is not None:
@@ -56,10 +56,10 @@ class SatellitePasses(object):
         self._passInfos = ()
 
     def format(self):
-        #result = '\nFrom: ' + utils.formatLocalDateTime(self._from) + ' To: ' + utils.formatLocalDateTime(self._to) + '\n'
+        #result = '\nFrom: ' + formatLocalDateTime(self._from) + ' To: ' + formatLocalDateTime(self._to) + '\n'
         result = ''
         for satpass in self._passInfos:
-            date = utils.formatLocalDateDDMM(satpass.getDate())
+            date = formatLocalDateDDMM(satpass.getDate())
             result += date + ' ' + satpass.format()
 
         if len(result) == 0:
@@ -80,13 +80,13 @@ class SatellitePasses(object):
 
         for xml_node in rootn:
             if xml_node.tag == 'location':
-                self._observer.lat, self._observer.long = utils.xmlNodeValue(xml_node, 'lat'), utils.xmlNodeValue(xml_node, 'lng')
+                self._observer.lat, self._observer.long = xmlNodeValue(xml_node, 'lat'), xmlNodeValue(xml_node, 'lng')
             elif xml_node.tag == 'altitude':
                 self._observer.elevation = int(float(xml_node.text))
             elif xml_node.tag == 'from':
-                self._from = utils.parseIsoDateTime(xml_node.text)
+                self._from = parseIsoDateTime(xml_node.text)
             elif xml_node.tag == 'to':
-                self._to = utils.parseIsoDateTime(xml_node.text)
+                self._to = parseIsoDateTime(xml_node.text)
             elif xml_node.tag == 'pass':
                 self._passInfos += (self._parseOnePass(xml_node),)
 
@@ -107,7 +107,7 @@ class SatellitePasses(object):
         coordTime = TimeAltAz()
         for xml_node in coordn:
             if xml_node.tag == 'time':
-                coordTime.tm = utils.parseIsoDateTime(xml_node.text)
+                coordTime.tm = parseIsoDateTime(xml_node.text)
             elif xml_node.tag == 'alt':
                 coordTime.alt = xml_node.text
             elif xml_node.tag == 'az':

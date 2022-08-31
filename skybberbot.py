@@ -16,21 +16,20 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from iriflares import IridiumFlares
-from jabberbot import botcmd
-from mucjabberbot import MUCJabberBot
-from satellitepass import SatellitePasses
-from user import User
 import datetime
 import time
 import ephem
 import math
 import re
 import sqlite3
-import urllib2
-import utils
-from typedetector import TypeDetector
-from location import Location
+import urllib.request
+from .utils import *
+from .jabberbot import botcmd
+from .mucjabberbot import MUCJabberBot
+from .satellitepass import SatellitePasses
+from .user import User
+from .typedetector import TypeDetector
+from .location import Location
 
 class CmdError(Exception):
     """ Help class for handling command arguments errors
@@ -115,13 +114,9 @@ class SkybberBot(MUCJabberBot):
         (satid, _, reply) = self._checkArgSatId(args)
         if satid is not None:
             try:
-                opener = urllib2.build_opener()
-                opener.addheaders = [
-                    ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
-                ]
-
-                req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + str(satid) , None, {})
-                reply = opener.open(req).read()
+                req = urllib.request.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + str(satid))
+                req.addheader('Accept', 'application/xml')
+                reply = urllib.request.urlopen(req).read()
             except urllib2.URLError:
                 reply = 'Service disconnected.'
         return reply
@@ -143,30 +138,6 @@ class SkybberBot(MUCJabberBot):
         """
         return self._satteliteRequest(mess, args, '25544')
 
-    @botcmd(thread=True)
-    def iri(self, mess, args):
-        """iri - show Iridium flares
-        """
-        opener = urllib2.build_opener()
-        opener.addheaders = [
-            ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
-        ]
-
-        jid, loc, _ = self._parseJidLocTime(mess, args)
-        lng, lat = self._getObserverStrCoord(jid, loc)
-
-        req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/iridium/flares?lat=' + lat + '&lng=' + lng, None, {})
-
-        iri_flares = IridiumFlares()
-
-        try:
-            xml_resp = opener.open(req).read()
-            iri_flares.parseFromXml(xml_resp)
-            reply = iri_flares.format()
-        except urllib2.URLError:
-            reply = 'Service disconnected.'
-        return reply
-
     @botcmd
     def tw(self, mess, args):
         """tw [date] [location]  - show begin/end of current twilight
@@ -180,7 +151,7 @@ class SkybberBot(MUCJabberBot):
         next_rising, next_setting, riset = self._getNextRiseSetting(jid, ephem.Sun(), dt=dt, loc=loc, horizon='-18.0')
 
         if riset == SkybberBot.RISET_OK:
-            reply = SkybberBot.UNICODE_SET + utils.formatLocalTime(next_setting) + '  -  ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(next_rising)
+            reply = SkybberBot.UNICODE_SET + formatLocalTime(next_setting) + '  -  ' + SkybberBot.UNICODE_RISE + formatLocalTime(next_rising)
         elif riset == SkybberBot.NEVER_SETTING:
             reply = SkybberBot.MSG_NO_ASTRONOMICAL_NIGHT
         else:
@@ -264,10 +235,10 @@ class SkybberBot(MUCJabberBot):
                 return SkybberBot.MSG_FULL_ASTRONOMICAL_NIGHT
 
         if tw_middle_start is None:
-            reply = SkybberBot.UNICODE_SET + utils.formatLocalTime(tw_start) + '  -  ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(tw_end)
+            reply = SkybberBot.UNICODE_SET + formatLocalTime(tw_start) + '  -  ' + SkybberBot.UNICODE_RISE + formatLocalTime(tw_end)
         else:
-            reply = SkybberBot.UNICODE_SET + utils.formatLocalTime(tw_start) + '  -  ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(tw_middle_end) + ' , ' + \
-                    SkybberBot.UNICODE_SET + utils.formatLocalTime(tw_middle_end) + '  -  ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(tw_end)
+            reply = SkybberBot.UNICODE_SET + formatLocalTime(tw_start) + '  -  ' + SkybberBot.UNICODE_RISE + formatLocalTime(tw_middle_end) + ' , ' + \
+                    SkybberBot.UNICODE_SET + formatLocalTime(tw_middle_end) + '  -  ' + SkybberBot.UNICODE_RISE + formatLocalTime(tw_end)
 
         return reply
 
@@ -441,24 +412,20 @@ class SkybberBot(MUCJabberBot):
         """
         try:
             reply = MUCJabberBot.execute_command(self, mess, cmd, args)
-        except CmdError, e:
+        except CmdError as e:
             reply = e.value
         return reply
 
     def _satteliteRequest(self, mess, args, satid):
         """ TODO:
         """
-        opener = urllib2.build_opener()
-        opener.addheaders = [
-            ('Accept', 'application/xml'), # Change this to applicaiton/xml to get an XML response
-        ]
-
         jid, loc, _ = self._parseJidLocTime(mess, args)
         lng, lat = self._getObserverStrCoord(jid, loc)
+        req = urllib.request.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
+        req.addheader('Accept', 'application/xml')
 
-        req = urllib2.Request('http://uhaapi-skybber.rhcloud.com/satellites/' + satid + '/passes?lat=' + lat + '&lng=' + lng, None, {})
         try:
-            reply = opener.open(req).read()
+            reply = urllib.request.urlopen(req).read()
             sp = SatellitePasses()
             sp.parseFromXml(reply)
             return sp.format()
@@ -493,7 +460,7 @@ class SkybberBot(MUCJabberBot):
                         loc = user.getUserLocationList(c, 1)
                 if loc is not None:
                     observer = ephem.Observer()
-                    observer.long, observer.lat = utils.toradians(loc.getLng()), utils.toradians(loc.getLat())
+                    observer.long, observer.lat = toradians(loc.getLng()), toradians(loc.getLat())
                     observer.elevation = 0
         if observer is None:
             observer = self._obsr_default
@@ -520,8 +487,8 @@ class SkybberBot(MUCJabberBot):
         """Get observer's coordinations in string form
         """
         observer = self._getObserver(jid, loc)
-        lng = utils.todegrees(observer.long)
-        lat = utils.todegrees(observer.lat)
+        lng = todegrees(observer.long)
+        lat = todegrees(observer.lat)
         return ("%0.3f" % lng), ("%0.3f" % lat)
 
     def _checkArgSatId(self, args):
@@ -614,9 +581,9 @@ class SkybberBot(MUCJabberBot):
 
         if riset == SkybberBot.RISET_OK:
             if elong > 0.0:
-                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(next_setting)
+                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + formatLocalTime(next_setting)
             else:
-                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(next_rising)
+                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + formatLocalTime(next_rising)
         else:
             result = self._fmtRiSetFailMsg(body, riset)
 
@@ -637,9 +604,9 @@ class SkybberBot(MUCJabberBot):
 
         if riset == SkybberBot.RISET_OK:
             if rising_first:
-                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(next_rising) + '  ' + SkybberBot.UNICODE_SET + utils.formatLocalTime(next_setting)
+                result = unic_symb + ' ' + SkybberBot.UNICODE_RISE + formatLocalTime(next_rising) + '  ' + SkybberBot.UNICODE_SET + formatLocalTime(next_setting)
             else:
-                result = unic_symb + ' ' + SkybberBot.UNICODE_SET + utils.formatLocalTime(next_setting) + '  ' + SkybberBot.UNICODE_RISE + utils.formatLocalTime(next_rising)
+                result = unic_symb + ' ' + SkybberBot.UNICODE_SET + formatLocalTime(next_setting) + '  ' + SkybberBot.UNICODE_RISE + formatLocalTime(next_rising)
         else:
             result = self._fmtRiSetFailMsg(body, riset)
         if with_constell_mag:
